@@ -403,6 +403,12 @@ class Read(object):
         post_width = 7
         score_width = 15
 
+        # Write summary to separate file
+        with open(config["ALIGN_FILE"], 'a') as f:
+            f.write(f"{read.al_file}\t")
+            f.write(f"{al_len}\t")
+            f.write(f"{read.counts}\t")
+            f.write(f"{''.join([x for x in read.al_seq if x != '-'])}\n")
         with open(os.path.join(config["OUT_NEEDLE"], read.al_file), 'w') as f:
             f.write('########################################\n')
             f.write('# Program: Biopython\n')
@@ -2019,6 +2025,7 @@ def main(config):
     config["STATS_FILE"] = os.path.join(config["OUT_DIR"], "stats.txt")
     config["CONFIG_FILE"] = os.path.join(config["OUT_DIR"], "config.txt")
 
+    config["ALIGN_FILE"] = "aligns.tsv"
     # make all input & output file / folder names absolute paths
     for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", "STATS_FILE", "CONFIG_FILE", "OUT_COV_FILE", "OUT_COV_PLOT"]:
         if config[file_]:
@@ -2114,6 +2121,13 @@ def main(config):
     # create output file directory for alignments print-outs
     if not os.path.exists(config["OUT_NEEDLE"]):
         os.makedirs(config["OUT_NEEDLE"])
+
+    # Sort reads based on abundance
+    reads.sort(key=lambda x: x.counts, reverse=True)
+
+    # Heading for alignment summary file
+    with open(config["ALIGN_FILE"], 'w') as the_file:
+        the_file.write("Needle_file\tLength\tCounts\tSequence\n")
 
     for i,read in enumerate(reads):
         reads[i].al_file = 'needle_{}.txt'.format(i)
