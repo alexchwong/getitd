@@ -353,7 +353,7 @@ class Read(object):
 
             # check & process each insert found
             for insert_idxs in insert_idxs_list:
-                if len(insert_idxs) >= config["MIN_INSERT_SEQ_LENGTH"] and "N" not in readn[insert_idxs]:
+                if len(insert_idxs) >= config["MIN_INSERT_SEQ_LENGTH"]: # and "N" not in readn[insert_idxs]:
                     insert_start = insert_idxs[0]
                     insert_end = insert_idxs[-1]
                     insert = Insert(
@@ -1784,6 +1784,7 @@ def parse_config_from_cmdline(config):
     parser.add_argument('-min_read_length', help="minimum read length in bp required after N-trimming (default 100)", default="100", type=int)
     parser.add_argument('-min_read_copies', help="minimum number of copies of each read required for processing (1 to turn filter off, 2 (default) to discard unique reads)", default="2", type=int)
     parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered by getITD. For non-trailing ITDs, this is the minimum insert length; for trailing ITDs, it is the minimum number of bp of a potentially longer ITD which have to be sequenced (default 6).", default="6", type=int)
+    parser.add_argument("-max_seq_Ns", help="maximum number of N's before these are filtered prior to alignment", type=int, default=-1)
     parser.add_argument('-filter_ins_unique_reads', help="minimum number of unique reads required to support an insertion for it to be considered 'high confidence' (default 2)", default="2", type=int)
     parser.add_argument('-filter_ins_total_reads', help="minimum number of total reads required to support an insertion for it to be considered 'high confidence' (default 1)", default="1", type=int)
     parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
@@ -1818,6 +1819,7 @@ def parse_config_from_cmdline(config):
     config["MIN_SCORE_ALIGNMENTS"] = cmd_args.minscore_alignments
 
     config["MIN_BQS"] = cmd_args.min_bqs
+    config["MAX_NS"] = cmd_args.max_seq_Ns
     config["MIN_READ_LENGTH"] = cmd_args.min_read_length
     config["MIN_INSERT_SEQ_LENGTH"] = cmd_args.min_insert_seq_length
     if config["TECH"] == "454":
@@ -2088,6 +2090,13 @@ def main(config):
         reads = [read for read in reads if read.counts >= config["MIN_READ_COPIES"] ]
         save_stats("Number of unique reads with at least {} copies: {}".format(config["MIN_READ_COPIES"],len(reads)), config["STATS_FILE"])
     save_stats("Total reads remaining for analysis: {} ({} %)".format(sum((read.counts for read in reads)), round(sum((read.counts for read in reads)) * 100 / TOTAL_READS, 2)), config["STATS_FILE"])
+
+    # FILTER READS with too many N's
+    if config["MAX_NS"] > -1:
+        reads = [read for read in reads if read.seq.count('N') <= config["MAX_NS"] ]    
+        save_stats("Number of unique reads with at most {} Ns: {}".format(config["MAX_NS"],len(reads)), config["STATS_FILE"])
+    else:
+        save_stats("Reads with N's allowed, these are not filtered", config["STATS_FILE"])
 
     ## ALIGN TO REF
     save_stats("\n-- Aligning to Reference --", config["STATS_FILE"])
