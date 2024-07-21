@@ -406,7 +406,6 @@ class Read(object):
         # Write summary to separate file
         with open(config["ALIGN_FILE"], 'a') as f:
             f.write(f"{read.al_file}\t")
-            f.write(f"{al_len}\t")
             f.write(f"{read.counts}\t")
             f.write(f"{''.join([x for x in read.al_seq if x != '-'])}\n")
         with open(os.path.join(config["OUT_NEEDLE"], read.al_file), 'w') as f:
@@ -2136,7 +2135,7 @@ def main(config):
 
     # Heading for alignment summary file
     with open(config["ALIGN_FILE"], 'w') as the_file:
-        the_file.write("Needle_file\tLength\tCounts\tSequence\n")
+        the_file.write("Needle_file\tCounts\tSequence\n")
 
     for i,read in enumerate(reads):
         reads[i].al_file = 'needle_{}.txt'.format(i)
