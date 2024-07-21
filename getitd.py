@@ -128,6 +128,7 @@ class Read(object):
                 read-to-reference alignment.
         """
         self.seq = seq
+        self.ref = config["REF"]
         self.index = index
         self.bqs = bqs
         self.index_bqs = index_bqs
@@ -215,7 +216,7 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
-        alignment = aligner.align(self.seq, config["REF"])
+        alignment = aligner.align(self.seq, self.ref)
         if alignment:
             self.al_seq, self.al_ref = alignment[-1][0:2]
             self.al_score = alignment[-1].score
@@ -224,7 +225,7 @@ class Read(object):
 
         if config["INFER_SENSE_FROM_ALIGNMENT"]:
             rev = self.reverse_complement()
-            rev_alignment = aligner.align(rev.seq, config["REF"])
+            rev_alignment = aligner.align(rev.seq, self.ref)
             if (rev_alignment and
                     (self.al_score is None or rev_alignment[-1].score > self.al_score)):
                 rev.al_seq, rev.al_ref = rev_alignment[-1][0:3]
