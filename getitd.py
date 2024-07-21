@@ -216,7 +216,7 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
-        alignment = aligner.align(self.seq, config["REF"])
+        alignment = aligner.align(str(self.seq), config["REF"])
         if alignment:
             self.al_seq, self.al_ref = alignment[-1][0:2]
             self.al_score = alignment[-1].score
@@ -225,7 +225,7 @@ class Read(object):
 
         if config["INFER_SENSE_FROM_ALIGNMENT"]:
             rev = self.reverse_complement()
-            rev_alignment = aligner.align(rev.seq, config["REF"])
+            rev_alignment = aligner.align(str(rev.seq), config["REF"])
             if (rev_alignment and
                     (self.al_score is None or rev_alignment[-1].score > self.al_score)):
                 rev.al_seq, rev.al_ref = rev_alignment[-1][0:3]
@@ -2115,14 +2115,6 @@ def main(config):
         for read in reads:
             f.write(f"{read.seq}\t")            
             f.write(f"{read.counts}\n")
-
-    ## Try aligning outside function
-    for i in range(len(reads)):
-        print(type(reads[i].seq))
-        print(type(config["REF"]))
-        print(reads[i].seq)
-        print(config["REF"])
-        aln = aligner.align(reads[i].seq, config["REF"])
 
     ## ALIGN TO REF
     save_stats("\n-- Aligning to Reference --", config["STATS_FILE"])
