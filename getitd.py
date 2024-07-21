@@ -2029,9 +2029,11 @@ def main(config):
     config["STATS_FILE"] = os.path.join(config["OUT_DIR"], "stats.txt")
     config["CONFIG_FILE"] = os.path.join(config["OUT_DIR"], "config.txt")
 
-    config["ALIGN_FILE"] = "aligns.tsv"
+    config["ALIGN_FILE"] = os.path.join(config["OUT_DIR"], "aligns.tsv")
+    config["PREALIGN_FILE"] = os.path.join(config["OUT_DIR"], "prealigns.tsv")
     # make all input & output file / folder names absolute paths
-    for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", "STATS_FILE", "CONFIG_FILE", "OUT_COV_FILE", "OUT_COV_PLOT"]:
+    for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", "STATS_FILE",
+        "CONFIG_FILE", "OUT_COV_FILE", "OUT_COV_PLOT", "ALIGN_FILE", "PREALIGN_FILE"]:
         if config[file_]:
             config[file_] = make_file_path_absolute(config[file_])
 
@@ -2108,6 +2110,13 @@ def main(config):
         save_stats("Number of unique reads with at most {} Ns: {}".format(config["MAX_NS"],len(reads)), config["STATS_FILE"])
     else:
         save_stats("Reads with N's allowed, these are not filtered", config["STATS_FILE"])
+
+    ## Save pre-aligned reads
+    with open(config["PREALIGN_FILE"], 'w') as f:
+        f.write("Sequence\tCounts\n")
+        for read in reads:
+            f.write(f"{read.seq}\t")            
+            f.write(f"{read.counts}\n")
 
     ## ALIGN TO REF
     save_stats("\n-- Aligning to Reference --", config["STATS_FILE"])
