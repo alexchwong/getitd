@@ -215,7 +215,7 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
-        aligner = config["Aligner"].
+        aligner = config["Aligner"]
         alignment = aligner.align(self.seq, config["REF"])
         if alignment:
             self.al_seq, self.al_ref = alignment[-1][0:2]
