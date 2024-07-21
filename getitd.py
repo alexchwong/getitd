@@ -215,7 +215,6 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
-        aligner = config["Aligner"]
         alignment = aligner.align(self.seq, config["REF"])
         if alignment:
             self.al_seq, self.al_ref = alignment[-1][0:2]
@@ -2042,15 +2041,13 @@ def main(config):
     config["REF"] = read_reference(config["REF_FILE"]).upper()
     config["COST_ALIGNED"] = {(c1, c2): get_alignment_score(c1, c2, config) for c1, c2 in itertools.product(["A","T","G","C","Z","N"], repeat=2)}
 
-    config["Aligner"] = aligner
-
-    config["Aligner"].mode = 'global'
-    config["Aligner"].match_score = config["COST_MATCH"]
-    config["Aligner"].mismatch_score = config["COST_MISMATCH"]
-    config["Aligner"].open_gap_score = config["COST_GAPOPEN"]
-    config["Aligner"].extend_gap_score = config["COST_GAPEXTEND"]
-    config["Aligner"].target_end_gap_score = 0.0
-    config["Aligner"].query_end_gap_score = 0.0
+    aligner.mode = 'global'
+    aligner.match_score = config["COST_MATCH"]
+    aligner.mismatch_score = config["COST_MISMATCH"]
+    aligner.open_gap_score = config["COST_GAPOPEN"]
+    aligner.extend_gap_score = config["COST_GAPEXTEND"]
+    aligner.target_end_gap_score = 0.0
+    aligner.query_end_gap_score = 0.0
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
