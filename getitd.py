@@ -216,6 +216,7 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
+        print(self.seq)
         alignment = aligner.align(self.seq, self.ref)
         if alignment:
             self.al_seq, self.al_ref = alignment[-1][0:2]
