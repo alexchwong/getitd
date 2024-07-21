@@ -2117,7 +2117,11 @@ def main(config):
             f.write(f"{read.counts}\n")
 
     ## Try aligning outside function
-    for i in tqdm(range(len(reads))):
+    for i in range(len(reads)):
+        print(type(reads[i].seq))
+        print(type(config["REF"]))
+        print(reads[i].seq)
+        print(config["REF"])
         aln = aligner.align(reads[i].seq, config["REF"])
 
     ## ALIGN TO REF
