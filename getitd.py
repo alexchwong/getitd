@@ -216,9 +216,15 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
-        print(self.seq)
-        print(self.ref)
-        alignment = aligner.align(self.seq, self.ref)
+        aligner2 = Align.PairwiseAligner()
+        aligner2.mode = 'global'
+        aligner2.match_score = 5
+        aligner2.mismatch_score = -15
+        aligner2.open_gap_score = -36
+        aligner2.extend_gap_score = -0.5
+        aligner2.target_end_gap_score = 0.0
+        aligner2.query_end_gap_score = 0.0
+        alignment = aligner2.align(self.seq, self.ref)
         if alignment:
             self.al_seq, self.al_ref = alignment[-1][0:2]
             self.al_score = alignment[-1].score
@@ -227,7 +233,7 @@ class Read(object):
 
         if config["INFER_SENSE_FROM_ALIGNMENT"]:
             rev = self.reverse_complement()
-            rev_alignment = aligner.align(rev.seq, self.ref)
+            rev_alignment = aligner2.align(rev.seq, self.ref)
             if (rev_alignment and
                     (self.al_score is None or rev_alignment[-1].score > self.al_score)):
                 rev.al_seq, rev.al_ref = rev_alignment[-1][0:3]
@@ -2051,10 +2057,6 @@ def main(config):
     aligner.extend_gap_score = config["COST_GAPEXTEND"]
     aligner.target_end_gap_score = 0.0
     aligner.query_end_gap_score = 0.0
-    print(config["COST_MATCH"])
-    print(config["COST_MISMATCH"])
-    print(config["COST_GAPOPEN"])
-    print(config["COST_GAPEXTEND"])
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
