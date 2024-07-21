@@ -2121,7 +2121,9 @@ def main(config):
     if config["INFER_SENSE_FROM_ALIGNMENT"]:
         save_stats("Inferring sense from alignment!", config["STATS_FILE"])
     start_time = timeit.default_timer()
-    reads = parallelize(Read.align, reads, config["NKERN"])
+    # reads = parallelize(Read.align, reads, config["NKERN"])
+    for i in range(len(reads)):
+        reads[i] = reads[i].align()
     print("Alignment took {} s".format(round(timeit.default_timer() - start_time, 2)))
 
     # FILTER BASED ON ALIGNMENT SCORE (INCL FAILED ALIGNMENTS WITH read.al_score is None)
