@@ -2051,6 +2051,10 @@ def main(config):
     aligner.extend_gap_score = config["COST_GAPEXTEND"]
     aligner.target_end_gap_score = 0.0
     aligner.query_end_gap_score = 0.0
+    print(config["COST_MATCH"])
+    print(config["COST_MISMATCH"])
+    print(config["COST_GAPOPEN"])
+    print(config["COST_GAPEXTEND"])
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
