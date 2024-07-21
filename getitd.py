@@ -18,6 +18,8 @@ import os
 import copy
 import gzip
 
+from Bio import Align
+aligner = Align.PairwiseAligner()
 
 def save_config(config, filename):
     """
@@ -213,20 +215,20 @@ class Read(object):
         Returns:
             Aligned Read. May be reversed for 454.
         """
-        alignment = bio.align.globalds(self.seq, config["REF"], config["COST_ALIGNED"],
-                config["COST_GAPOPEN"], config["COST_GAPEXTEND"], penalize_end_gaps=False)
+        alignment = config["Aligner"].align(self.seq, config["REF"])
         if alignment:
-            self.al_seq, self.al_ref, self.al_score = alignment[-1][0:3]
+            self.al_seq, self.al_ref = alignment[-1][0:2]
+            self.al_score = alignment[-1].score
             if not self.sense:
                 self.sense = 1
 
         if config["INFER_SENSE_FROM_ALIGNMENT"]:
             rev = self.reverse_complement()
-            rev_alignment = bio.align.globalds(rev.seq, config["REF"], config["COST_ALIGNED"],
-                config["COST_GAPOPEN"], config["COST_GAPEXTEND"], penalize_end_gaps=False)
+            rev_alignment = config["Aligner"].align(rev.seq, config["REF"])
             if (rev_alignment and
-                    (self.al_score is None or rev_alignment[-1][2] > self.al_score)):
-                rev.al_seq, rev.al_ref, rev.al_score = rev_alignment[-1][0:3]
+                    (self.al_score is None or rev_alignment[-1].score > self.al_score)):
+                rev.al_seq, rev.al_ref = rev_alignment[-1][0:3]
+                rev.al_score = rev_alignment[-1].score
                 if not rev.sense:
                     rev.sense = -1
                 return rev
@@ -2037,6 +2039,15 @@ def main(config):
     config["REF"] = read_reference(config["REF_FILE"]).upper()
     config["COST_ALIGNED"] = {(c1, c2): get_alignment_score(c1, c2, config) for c1, c2 in itertools.product(["A","T","G","C","Z","N"], repeat=2)}
 
+    config["Aligner"] = aligner
+
+    config["Aligner"].mode = 'global'
+    config["Aligner"].match_score = config["COST_MATCH"]
+    config["Aligner"].mismatch_score = config["COST_MISMATCH"]
+    config["Aligner"].open_gap_score = config["COST_GAPOPEN"]
+    config["Aligner"].extend_gap_score = config["COST_GAPEXTEND"]
+    config["Aligner"].target_end_gap_score = 0.0
+    config["Aligner"].query_end_gap_score = 0.0
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
