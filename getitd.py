@@ -1790,6 +1790,7 @@ def parse_config_from_cmdline(config):
     parser.add_argument('-filter_ins_unique_reads', help="minimum number of unique reads required to support an insertion for it to be considered 'high confidence' (default 2)", default="2", type=int)
     parser.add_argument('-filter_ins_total_reads', help="minimum number of total reads required to support an insertion for it to be considered 'high confidence' (default 1)", default="1", type=int)
     parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
+    parser.add_argument("-quick", help="Stops after prealign and align sequence output",action="store_true")
     cmd_args = parser.parse_args()
 
     config["R1"] = cmd_args.fastq1
@@ -1834,6 +1835,8 @@ def parse_config_from_cmdline(config):
     config["MIN_TOTAL_READS"] = cmd_args.filter_ins_total_reads
     config["MIN_UNIQUE_READS"] = cmd_args.filter_ins_unique_reads
     config["MIN_VAF"] = cmd_args.filter_ins_vaf
+    
+    config["QUICK"] = cmd_args.quick
 
     return config
 
@@ -2155,6 +2158,10 @@ def main(config):
     # Heading for alignment summary file
     with open(config["ALIGN_FILE"], 'w') as the_file:
         the_file.write("Needle_file\tCounts\tSequence\n")
+
+    if config["QUICK"]:
+        save_stats("\nQUITTING DUE TO QUICK MODE!", config["STATS_FILE"])
+        quit()
 
     for i,read in enumerate(reads):
         reads[i].al_file = 'needle_{}.txt'.format(i)
