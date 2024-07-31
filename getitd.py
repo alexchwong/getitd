@@ -1678,14 +1678,14 @@ def get_unique_reads(reads):
     # unique_seqs, inverse_indices = np.unique(seqs, return_inverse=True)
     unique_seqs = pd.unique(pd.Series(seqs)).tolist()
     us_indices = []
-    for uSeq in unique_seqs:
+    for uSeq in tqdm(unique_seqs, total = len(unique_seqs):
         us_indices.append([i for i, x in enumerate(seqs) if x == uSeq])
 
     nreads = np.array(reads)
     unique_reads = []
     # for inverse_index, seq in enumerate(unique_seqs):
         # list_reads = nreads[inverse_indices == inverse_index]
-    for u_i, u_s in zip(us_indices, unique_seqs):
+    for u_i, u_s in tqdm(zip(us_indices, unique_seqs), total = len(unique_seqs)):
         list_reads = nreads[np.array(u_i)]
         list_reads_index = [read.index for read in list_reads]
         list_reads_sense = set([read.sense for read in list_reads])
