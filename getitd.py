@@ -1675,11 +1675,18 @@ def get_unique_reads(reads):
 
     """
     seqs = [read.seq for read in reads]
-    unique_seqs, inverse_indices = np.unique(seqs, return_inverse=True)
+    # unique_seqs, inverse_indices = np.unique(seqs, return_inverse=True)
+    unique_seqs = pd.unique(pd.Series(seqs)).tolist()
+    us_indices = []
+    for uSeq in unique_seqs:
+        us_indices.append([i for i, x in enumerate(seqs) if x == uSeq])
+
     nreads = np.array(reads)
     unique_reads = []
-    for inverse_index, seq in enumerate(unique_seqs):
-        list_reads = nreads[inverse_indices == inverse_index]
+    # for inverse_index, seq in enumerate(unique_seqs):
+        # list_reads = nreads[inverse_indices == inverse_index]
+    for u_i, u_s in zip(us_indices, unique_seqs):
+        list_reads = nreads[np.array(u_i)]
         list_reads_index = [read.index for read in list_reads]
         list_reads_sense = set([read.sense for read in list_reads])
         for sense in list_reads_sense:
@@ -2119,6 +2126,10 @@ def main(config):
             f.write(f"{read.seq}\t")            
             f.write(f"{read.counts}\n")
 
+    if config["QUICK"]:
+        save_stats("\nQUITTING DUE TO QUICK MODE!", config["STATS_FILE"])
+        quit()
+
     ## ALIGN TO REF
     save_stats("\n-- Aligning to Reference --", config["STATS_FILE"])
     if config["INFER_SENSE_FROM_ALIGNMENT"]:
@@ -2158,10 +2169,6 @@ def main(config):
     # Heading for alignment summary file
     with open(config["ALIGN_FILE"], 'w') as the_file:
         the_file.write("Needle_file\tCounts\tSequence\n")
-
-    if config["QUICK"]:
-        save_stats("\nQUITTING DUE TO QUICK MODE!", config["STATS_FILE"])
-        quit()
 
     for i,read in enumerate(reads):
         reads[i].al_file = 'needle_{}.txt'.format(i)
