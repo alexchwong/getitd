@@ -2030,7 +2030,8 @@ def plot_coverage(iref_coverage, config):
 
 
 def main(config):
-
+    program_start_time = timeit.default_timer()
+    
     # PROCESS INPUTS
     config["OUT_DIR"] = '_'.join([config["SAMPLE"], "getitd"])
     config["OUT_NEEDLE"] = 'out_needle'
@@ -2088,6 +2089,7 @@ def main(config):
     if not reads:
         save_stats("\nNO READS TO PROCESS!", config["STATS_FILE"])
         save_stats("Consider adjusting `-min_read_length` parameter?\n", config["STATS_FILE"])
+        print(f"Total getITD time - {round(timeit.default_timer() - start_time, 2)})
         quit()
     save_stats("Mean read length after N-trimming: {}".format(round(np.mean([read.length for read in reads]), 2)), config["STATS_FILE"])
 
@@ -2128,6 +2130,7 @@ def main(config):
 
     if config["QUICK"]:
         save_stats("\nQUITTING DUE TO QUICK MODE!", config["STATS_FILE"])
+        print(f"Total getITD time - {round(timeit.default_timer() - start_time, 2)})
         quit()
 
     ## ALIGN TO REF
@@ -2176,6 +2179,7 @@ def main(config):
 
     if not reads:
         save_stats("\nNO READS TO PROCESS!", config["STATS_FILE"])
+        print(f"Total getITD time - {round(timeit.default_timer() - start_time, 2)})
         quit()
 
 
@@ -2288,6 +2292,7 @@ def main(config):
     # CHANGE BACK TO ORIGINAL / PARENT DIRECTORY
     os.chdir("..")
 
+    print(f"Total getITD time - {round(timeit.default_timer() - start_time, 2)})
 
 
 ########## MAIN ####################
