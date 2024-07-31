@@ -1676,8 +1676,7 @@ def get_unique_reads(reads):
     """
     seqs = [read.seq for read in reads]
     unique_seqs, inverse_indices = np.unique(seqs, return_inverse=True)
-    unique_seqs = pd.unique(pd.Series(seqs)).tolist()
-
+    
     nreads = np.array(reads)
     unique_reads = []
     for inverse_index, seq in enumerate(unique_seqs):
