@@ -972,7 +972,7 @@ def parse_config_from_cmdline(config):
     config["REF_FILE"] = cmd_args.reference
     config["ANNO_FILE"] = cmd_args.anno
     
-    config["BBMAP_PATH"] = cmd_args.bbmap
+    config["BBMAP_PATH"] = make_file_path_absolute(cmd_args.bbmap)
     config["BBMAP_TRIMQ"] = cmd_args.trimq_merging
     config["BBMAP_BQS"] = cmd_args.min_bqs
     
@@ -1098,7 +1098,7 @@ def main(config):
 
     # PROCESS INPUTS
     config["OUT_DIR"] = '_'.join([config["SAMPLE"], "mergeitd"])
-    config["TMP_DIR"] = '_'.join([config["SAMPLE"], "mergeitd", "temp_fastq"])
+    config["TMP_DIR"] = '_'.join([config["SAMPLE"], "mergeitd/temp_fastq"])
 
     config["OUT_COV_PLOT"] = os.path.join(config["OUT_DIR"], "coverage.png")
     config["OUT_COV_FILE"] = os.path.join(config["OUT_DIR"], "coverage.txt")
