@@ -746,6 +746,201 @@ def findSNP(seq, ref, delins_hgvs):
 
     return realCoords, realRefs, realSubs
 
+def alignITD(prealigns_df, config):
+    REF = config["REF"]
+    
+    start_time = timeit.default_timer()
+    print(f"Processing sample {sampleName}")
+    
+    df = prealigns_df.copy(deep=True)
+
+    allow_insert_mismatch = 3
+
+    df["Aligned"] = False
+    df["alignRefCoords"] = ""
+    df["HGVS"] = ""
+    df["SNP"] = ""
+    df["net_insertSize"] = 0
+    df["Ns"] = ""
+    # df["idealSequence"] = ""
+    # df["gaps_and_mismatches"] = -1
+    # df["Ns"] = -1
+    # df["nonN_gaps_and_mismatches"] = -1
+
+    covIncrement = np.zeros((len(REF) + 1,))
+    mutList = []
+    mutNames = []
+
+    for i in range(len(df)):
+        seq = df.iloc[i]["Sequence"]
+        rC_S, ops_S, rSeq, startC, endC = getHGVS(seq, REF)
+        if startC == -1 or endC == -1:
+            continue
+
+        seqCount = int(df.iloc[i]["Counts"])
+            
+        covIncrement[startC] += seqCount
+        covIncrement[endC] -= seqCount
+        
+        seqMutList = []
+        for rC, ops, rS in zip(rC_S, ops_S, rSeq):
+            tmpMut = Mutation(ops, rC, rS, seqCount)
+            seqMutList.append(tmpMut)
+        
+        if any(m.netInsert() > 2 for m in seqMutList):
+            for ii in range(len(seqMutList)):
+                netInsert = seqMutList[ii].netInsert()
+                if netInsert > 2:
+                    thisMutName = seqMutList[ii].nameMut()
+                    # find highest count mutation with match under threshold
+                    mutOpts = [m for m in mutList if (m.netInsert() >= netInsert - 3 and m.netInsert() <= netInsert + 3)]
+
+                    if len(mutOpts) > 0:                                              
+                        mutOpts.sort(key=lambda x: x.counts, reverse=True)
+
+                        hasScore = False
+                        for mut in mutOpts:
+                            if mut.nameMut() == thisMutName:
+                                seqMutList[ii] = mut
+                                break
+                                
+                            if not hasScore:
+                                # get ideal scoring
+                                mutNameList = [m.nameMut() for m in seqMutList]
+                                synSeq = generateMutSeq(REF, mutNameList)
+                                aln = aligner2.align(seq, synSeq)
+                                cts_ideal = aln[-1].counts()
+                                hasScore = True
+                                
+                            tmpHGVS = copy.deepcopy(mutNameList)
+                            tmpHGVS[ii] = mut.nameMut()
+                            synSeq = generateMutSeq(REF, tmpHGVS)
+                            aln = aligner2.align(seq, synSeq)
+                            cts = aln[-1].counts()
+                            if cts.gaps + cts.mismatches <= cts_ideal.gaps + cts_ideal.mismatches + allow_insert_mismatch:
+                                seqMutList[ii] = mut
+                                break
+
+        HGVSMutNames = [m.nameMut() for m in seqMutList]
+                                                
+        # Infer SNPs
+        snpNameList = []
+        N_List = []
+
+        snpCoords, snpRefs, snpSubs = findSNP(seq, REF, HGVSMutNames)
+
+        for sC, sR, sS in zip(snpCoords, snpRefs, snpSubs):
+            if sS == "N":
+                N_List.append(sC)
+            else:
+                snp = f"{sC}{sR}>{sS}"
+                snpNameList.append(snp)
+                snpMut = Mutation("snp", str(sC), f"{sR}>{sS}", seqCount)
+                seqMutList.append(snpMut)
+        
+        # add mutations to main list
+        for ii in range(len(seqMutList)):
+            thisMutName = seqMutList[ii].nameMut()
+            mutIdx = [i for i, m in enumerate(mutNames) if m == thisMutName]
+            assert len(mutIdx) < 2
+            if len(mutIdx) == 1:
+                mutList[mutIdx[0]].add(seqCount)
+            else:
+                mutList.append(seqMutList[ii])
+                mutNames.append(seqMutList[ii].nameMut())                    
+                    
+        # determine comutations
+        if len(seqMutList) > 1:
+            seqMutNames = [m.nameMut() for m in seqMutList]
+            for ii in range(len(seqMutNames)):
+                mutIdx = [i for i, m in enumerate(mutNames) if m == seqMutNames[ii]]
+                assert len(mutIdx) == 1
+                for iii in range(len(seqMutNames)):
+                    if iii == ii:
+                        continue
+                    mutList[mutIdx[0]].addComutation(seqMutNames[iii], seqCount)                    
+                    
+        df.loc[i,"Aligned"] = True
+        df.loc[i, "alignRefCoords"] = f"{startC}-{endC}"
+        mutNameList = [m.nameMut() for m in seqMutList]
+        df.loc[i, "HGVS"] = ";".join(HGVSMutNames)
+        df.loc[i, "SNP"] = ";".join(snpNameList)
+
+        # newSeq = generateMutSeq(REF, mutNameList)
+        # df.loc[i, "net_insertSize"] = len(newSeq) - len(REF)
+        df.loc[i, "net_insertSize"] = sum([int(m.netInsert()) for m in seqMutList])
+        
+        df.loc[i, "Ns"] = ",".join([str(i) for i in N_List])
+        
+        # df.loc[i, "idealSequence"] = newSeq
+        # aln2 = aligner2.align(df.iloc[i]["Sequence"], newSeq)
+        # cts = aln2[-1].counts()
+        # df.loc[i, "gaps_and_mismatches"] = cts.gaps + cts.mismatches
+        # df.loc[i, "Ns"] = df.iloc[i]["Sequence"].count('N')
+        # df.loc[i, "nonN_gaps_and_mismatches"] = cts.gaps + cts.mismatches - df.iloc[i]["Sequence"].count('N')
+
+    ######################################################################
+    # Write results
+    df.to_csv(config["ALIGN_FILE"], sep = ",", index=False)
+    
+    mutList.sort(key=lambda x: x.counts, reverse=True)
+
+    mutName = [m.nameMut() for m in mutList]
+    mutCount = [m.counts for m in mutList]
+    netIns = [m.netInsert() for m in mutList]
+
+    totCov = []
+    incCov = 0
+    for i in range(len(covIncrement)):
+        incCov += covIncrement[i]
+        totCov.append(incCov)
+
+    insertPos = []
+    insertRegion = []
+    mutNorm = []
+    mutVaf = []
+    coMuts = []
+    for i in range(len(mutList)):
+        pos = mutList[i].getInsertPos()
+        assert pos > -1
+        insertPos.append(pos)
+        insertRegion.append(anno.iloc[pos]["region"])
+        mutNorm.append(totCov[pos])
+        mutVaf.append(100 * mutCount[i] / totCov[pos])
+        
+        cM_dict = {k: v for k, v in sorted(mutList[i].comutations.items(), key=lambda x: x[1], reverse = True)}
+        cM_dict_pc = {}
+        for k, v in zip(cM_dict.keys(), cM_dict.values()):
+            cM_dict_pc[k] = f"{round(v * 100/ mutCount[i], 2)}%"
+        coMuts.append(cM_dict_pc)
+
+    dict = {'name': mutName, 'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf, 'coverage': mutNorm, 
+            'insertPos': insertPos, 'insertRegion' : insertRegion, 'co_mutations' : coMuts} 
+    res = pd.DataFrame(dict)
+    print("Top inserts")
+    res_s = res[res["netInsert"] > 5]
+    print(res_s.head(10))
+    
+    ######################################################################
+    # Write results    
+    res.to_csv(config["MUTATION_FILE"], sep = ",", index=False)
+    ######################################################################
+
+    summa = res.groupby(["netInsert"])[["vaf_percent", "counts"]].sum().reset_index()
+    summa = summa.sort_values(by = 'vaf_percent', ascending = False)
+    print("Top insert lengths")
+    print(summa.head(10))
+    
+    ######################################################################
+    # Write results    
+    summa.to_csv(config["NETINSERT_FILE"], sep = ",", index=False)
+    ######################################################################
+    
+    print(f"mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec")
+    print("\n")
+    
+    return 0
+
 def parse_config_from_cmdline(config):
     """
     Get analysis parameters from commandline.
@@ -942,10 +1137,11 @@ def main(config):
             config[file_] = make_file_path_absolute(config[file_])
 
     config["ANNO"] = read_annotation(config["ANNO_FILE"])
+    config["ANNO"] = annotateCoords(config["ANNO"])
+    
     # config["DOMAINS"] = get_domains(config["ANNO"])
     config["REF"] = read_reference(config["REF_FILE"]).upper()
     # config["COST_ALIGNED"] = {(c1, c2): get_alignment_score(c1, c2, config) for c1, c2 in itertools.product(["A","T","G","C","Z","N"], repeat=2)}
-
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
@@ -990,7 +1186,7 @@ def main(config):
         f.write(bbmap_log)
 
     ### READS MERGED & CLEANED FASTQ READS
-    reads = read_fastq(f"{outputDir}/fastq_tmp/cleaned.fastq")
+    reads = read_fastq(f"{config["TMP_DIR"]}/cleaned.fastq")
 
     ### GET UNIQUE READS
     unique_reads = Counter(reads)
@@ -1008,6 +1204,7 @@ def main(config):
     for i in range(len(prealigns)):
         prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
 
+    alignITD(prealigns, config)
 
     ### END MERGEITD PIPELINE
 
@@ -1015,7 +1212,7 @@ def main(config):
     # CHANGE BACK TO ORIGINAL / PARENT DIRECTORY
     os.chdir("..")
 
-
+    shutil.rmtree(config["TMP_DIR"])
 
 ########## MAIN ####################
 if __name__ == '__main__':
