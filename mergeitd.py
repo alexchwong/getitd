@@ -168,7 +168,7 @@ def bbmap_process(config):
     else:
         os.rename(f'{temp_path}/merged.fastq', f'{temp_path}/cleaned.fastq')
     
-    save_stats('BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec',
+    save_stats(f'BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
 
     with open(config["BBLOG"], 'w') as f:
@@ -725,7 +725,6 @@ def alignITD(prealigns_df, config):
     REF = config["REF"]
     
     start_time = timeit.default_timer()
-    print(f'Processing sample {sampleName}')
     
     df = prealigns_df.copy(deep=True)
 
