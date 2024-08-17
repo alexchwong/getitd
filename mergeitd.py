@@ -289,10 +289,10 @@ def annotateCoords(anno_df):
         if df.iloc[i]["region"].find("exon") > -1:
             if inIntron:
                 inIntron = False
-            df.loc[i, "HGVScoord"] = f'c.{int(df.iloc[i]['transcript_bp'])}'
+            df.loc[i, "HGVScoord"] = f'c.{int(df.iloc[i]["transcript_bp"])}'
         elif not inIntron:
             inIntron = True
-            cdot = int(df.iloc[i-1]['transcript_bp'])
+            cdot = int(df.iloc[i-1]["transcript_bp"])
             # find next exon coord
             nextExonCoord = 0
             lastExonCoord = i-1
