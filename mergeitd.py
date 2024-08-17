@@ -1,23 +1,26 @@
-__version__ = '1.5.16'
+__version__ = '1.0.0'
 
 
-import Bio.pairwise2 as bio
-import timeit
-import collections
-import itertools
 import datetime
 import multiprocessing
 import argparse
-import pandas as pd
-from numpy import inf # to read config["COST_ALIGNED"] from file
-import numpy as np
+
 import decimal as dc
 dc.getcontext().prec = 5
-import pprint
-import os
-import copy
-import gzip
 
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+import copy
+import subprocess
+import os
+import gzip
+import timeit
+import shutil
+
+from tqdm import tqdm
+from collections import Counter
+from Bio import Align
 
 def save_config(config, filename):
     """
@@ -103,6 +106,102 @@ def parallelize(function, args, cores):
     with multiprocessing.Pool(cores) as p:
         return p.map(function, args)
 
+def bbmap_process_quick(fastq1, fastq2, bbmap_path, temp_path):
+    assert os.path.isdir(bbmap_path)
+    assert os.path.isfile(f"{bbmap_path}/bbmerge.sh")
+    assert os.path.isfile(f"{bbmap_path}/bbduk.sh")
+    
+    start_time = timeit.default_timer()
+    
+    if os.path.isdir(temp_path):
+        shutil.rmtree(temp_path)
+        
+    subprocess.run(["mkdir", temp_path])
+    
+    bbmap_log = ""
+    
+    # Phase 1 merging
+    ret = subprocess.run([
+        f"{bbmap_path}/bbmerge.sh", 
+        f"in1={fastq1}", f"in2={fastq2}",
+        f"out={temp_path}/merged.fastq", 
+        f"outu={temp_path}/unmerged.fastq",
+        f"ihist={temp_path}/hist.tsv"
+    ], capture_output=True, text=True)
+    bbmap_log += ret.stderr + '\n'
+
+    # Phase 3 - average bqs filtering
+    ret = subprocess.run([
+        f"{bbmap_path}/bbduk.sh", 
+        f"in={temp_path}/merged.fastq",
+        f"out={temp_path}/cleaned.fastq", 
+        "maq=25"
+    ], capture_output=True, text=True)
+    bbmap_log += ret.stderr + '\n'
+    
+    print(f"BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec")
+    return bbmap_log
+
+def bbmap_process(fastq1, fastq2, bbmap_path, temp_path):
+    assert os.path.isdir(bbmap_path)
+    assert os.path.isfile(f"{bbmap_path}/bbmerge.sh")
+    assert os.path.isfile(f"{bbmap_path}/bbduk.sh")
+    
+    start_time = timeit.default_timer()
+    
+    if os.path.isdir(temp_path):
+        shutil.rmtree(temp_path)
+        
+    subprocess.run(["mkdir", temp_path])
+    
+    bbmap_log = ""
+    
+    # Phase 1 merging
+    ret = subprocess.run([
+        f"{bbmap_path}/bbmerge.sh", 
+        f"in1={fastq1}", f"in2={fastq2}",
+        f"out={temp_path}/merged.fastq", 
+        f"outu={temp_path}/unmerged.fastq",
+        f"ihist={temp_path}/hist.tsv"
+    ], capture_output=True, text=True)
+    bbmap_log += ret.stderr + '\n'
+    
+    # Phase 2 merging
+    ret = subprocess.run([
+        f"{bbmap_path}/bbduk.sh", 
+        f"in={temp_path}/unmerged.fastq",
+        f"out={temp_path}/qtrimmed.fastq", 
+        "qtrim=r", "trimq=20"
+    ], capture_output=True, text=True)
+    bbmap_log += ret.stderr + '\n'
+    
+    ret = subprocess.run([
+        f"{bbmap_path}/bbmerge.sh", 
+        f"in={temp_path}/qtrimmed.fastq",
+        f"out={temp_path}/merged2.fastq",
+        f"ihist={temp_path}/hist2.tsv"
+    ], capture_output=True, text=True)
+    bbmap_log += ret.stderr + '\n'
+    
+    # Concatenate into first file
+    f1 = open(f"{temp_path}/merged.fastq", 'a+')
+    f2 = open(f"{temp_path}/merged2.fastq", 'r')
+    f1.write(f2.read())
+    f1.close()
+    f2.close()
+
+    # Phase 3 - average bqs filtering
+    ret = subprocess.run([
+        f"{bbmap_path}/bbduk.sh", 
+        f"in={temp_path}/merged.fastq",
+        f"out={temp_path}/cleaned.fastq", 
+        "maq=30"
+    ], capture_output=True, text=True)
+    bbmap_log += ret.stderr + '\n'
+    
+    print(f"BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec")
+    return bbmap_log
+
 def is_gz_file(filename):
     """
     Check whether a given file is gzipped or not,
@@ -127,31 +226,26 @@ def read_fastq(fastq_file):
     Returns:
         List of Read() objects.
     """
-    reads = []
-    read_index = 0
+    reads = [] # simple list of fastq sequences
     try:
         if is_gz_file(fastq_file):
             open_fct = gzip.open
         else:
             open_fct = open
-
-        with open_fct(fastq_file,'rt') as f:
+        
+        with open_fct(fastq_file, 'rt') as f:
             line = f.readline()
             while line:
-                read_id = line
+                _ = line
                 read_seq = f.readline().rstrip(os.linesep)
-                read_desc = f.readline()
-                read_bqs = f.readline().rstrip(os.linesep)
-                assert len(read_seq) == len(read_bqs)
-                reads.append(Read(seq=read_seq, index=read_index, bqs=read_bqs))
+                _ = f.readline()
+                _ = f.readline().rstrip(os.linesep)
+                reads.append(read_seq)
                 line = f.readline()
-                read_index += 1
-    # catch missing file or permissions
     except IOError as e:
         print("---\nCould not read fastq file {}!\n---".format(fastq_file))
+    
     return reads
-
-
 
 def read_reference(filename):
     """
@@ -189,6 +283,62 @@ def read_annotation(filename):
     except IOError as e:
         print("\nAnnotation file was not provided or cannot be accessed!\n")
         return None
+
+def annotateCoords(anno_df):
+    """
+    Annotate HGVS coordinates to given reference file
+    """
+    df = anno_df.copy(deep=True)
+    
+    # find first exon
+    firstExonCoord = 0
+    for i in range(len(df)):
+        if df.iloc[i]["region"].find("exon") > -1:
+            firstExonCoord = i
+            break
+
+    assert firstExonCoord > -1
+    assert int(df.iloc[firstExonCoord]["transcript_bp"]) > 0
+    df["HGVScoord"] = ""
+    
+    # Annotate upstream intron if required
+    if firstExonCoord > 0:
+        cdot = int(df.iloc[i]["transcript_bp"])
+        for i in range(firstExonCoord, -1, -1):
+            df.loc[i, "HGVScoord"] = f"c.{int(cdot)}{int(i)-int(firstExonCoord)}"
+    
+    # Now annotate first exon
+    i = firstExonCoord
+    inIntron = False
+    while i < len(anno_df):
+        if df.iloc[i]["region"].find("exon") > -1:
+            if inIntron:
+                inIntron = False
+            df.loc[i, "HGVScoord"] = f"c.{int(df.iloc[i]['transcript_bp'])}"
+        elif not inIntron:
+            inIntron = True
+            cdot = int(df.iloc[i-1]['transcript_bp'])
+            # find next exon coord
+            nextExonCoord = 0
+            lastExonCoord = i-1
+            for j in range(i, len(df)):
+                if df.iloc[j]["region"].find("exon") > -1:
+                    nextExonCoord = j
+                    break
+            # annotate first base of intron
+            df.loc[i, "HGVScoord"] = f"c.{int(cdot)}+{1}"
+        elif nextExonCoord > 0:
+            # need to find whether position is closer to donor or acceptor
+            if i - lastExonCoord < nextExonCoord - i:
+                df.loc[i, "HGVScoord"] = f"c.{int(cdot)}+{i - lastExonCoord}"
+            else:
+                df.loc[i, "HGVScoord"] = f"c.{int(cdot)+1}-{nextExonCoord - i}"
+        else:
+            assert inIntron
+            df.loc[i, "HGVScoord"] = f"c.{int(cdot)}+{i - lastExonCoord}"
+        i += 1
+
+    return df
 
 def ar_to_vaf(ar):
     """
@@ -448,6 +598,7 @@ def main(config):
     config["STATS_FILE"] = os.path.join(config["OUT_DIR"], "stats.txt")
     config["CONFIG_FILE"] = os.path.join(config["OUT_DIR"], "config.txt")
 
+    config["BBLOG"] = "bbmap.log"
     config["ALIGN_FILE"] = "alignClasses.csv"
     config["MUTATION_FILE"] = "mutation_vaf.csv"
     config["NETINSERT_FILE"] = "netInserts_vaf.csv"
@@ -455,7 +606,7 @@ def main(config):
     # make all input & output file / folder names absolute paths
     for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", 
         "OUT_COV_PLOT", "OUT_COV_FILE", "STATS_FILE", "CONFIG_FILE",
-        "ALIGN_FILE", "MUTATION_FILE", "NETINSERT_FILE"
+        "BBLOG", "ALIGN_FILE", "MUTATION_FILE", "NETINSERT_FILE"
     ]:
         if config[file_]:
             config[file_] = make_file_path_absolute(config[file_])
@@ -489,6 +640,28 @@ def main(config):
     save_stats("\n==== PROCESSING SAMPLE {} ====".format(config["SAMPLE"]), config["STATS_FILE"])
 
     ### NEW MERGEITD PIPELINE
+
+    bbmap_log = bbmap_process_quick(
+        config["R1"], config["R2"], 
+        bbmap_path = config["BBMAP_PATH"], 
+        temp_path = config["TMP_DIR"])
+    
+    with open(config["BBLOG"], 'w') as f:
+        f.write(bbmap_log)
+
+    ### READS MERGED & CLEANED FASTQ READS
+    reads = read_fastq(f"{outputDir}/fastq_tmp/cleaned.fastq")
+
+    ### GET UNIQUE READS
+    unique_reads = Counter(reads)
+
+    ### MAKE PANDAS DF OF UNIQUE READS AND COUNTS
+    prealigns = pd.DataFrame({
+        "Sequence": list(Counter(unique_reads).keys()),
+        "Counts" : list(Counter(unique_reads).values())
+    })
+    prealigns = prealigns.sort_values(by = "Counts", ascending = False).reset_index(drop = True)
+    prealigns = prealigns[prealigns["Counts"] >= config["MIN_READ_COPIES"]]
 
     ### END MERGEITD PIPELINE
 
