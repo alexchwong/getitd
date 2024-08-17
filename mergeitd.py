@@ -140,12 +140,12 @@ def bbmap_process(config):
         elif logLines[i].find("Joined:") > -1:
             numMerged = int(logLines[i].split('\t')[1])
     
-    if numPairs > 0:
-        pcMerged = round(numMerged * 100 / numPairs, 2)
-        if config["BBMAP_TRIMQ"] > -1:
-            save_stats(f'Phase 1 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
-        else:
-            save_stats(f'Merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
+    assert numPairs > 0
+    pcMerged = round(numMerged * 100 / numPairs, 2)
+    if config["BBMAP_TRIMQ"] > -1:
+        save_stats(f'Phase 1 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
+    else:
+        save_stats(f'Merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
         
     tt = round(timeit.default_timer() - start_time, 2)
     save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
@@ -213,13 +213,20 @@ def bbmap_process(config):
         numRetained = 0
         for i in range(len(logLines)):
             if logLines[i].find("Input:") > -1:
-                numInput = int(logLines[i].split('\t')[1])
+                txtInput = logLines[i].split('\t')[1]
+                txtInput = txtInput.split(' ')[0]
+                numInput = int(txtInput)
             elif logLines[i].find("Result:") > -1:
-                numRetained = int(logLines[i].split('\t')[1])
+                txtRetained = logLines[i].split('\t')[1]
+                txtRetained = txtRetained.split(' ')[0]
+                numRetained = int(txtRetained)
         
-        if numInput > 0:
-            pcRetained = round(numRetained * 100 / numInput, 2)
-            save_stats(f'BQS filtering retained {numRetained} of {numInput} merged reads ({pcRetained} %)', config["STATS_FILE"])
+        assert numInput > 0
+        pcRetained = round(numRetained * 100 / numInput, 2)
+        save_stats(f'BQS filtering retained {numRetained} of {numInput} merged reads ({pcRetained} %)', config["STATS_FILE"])
+
+        pcTotal = round(numRetained * 100 / numPairs, 2)
+        save_stats(f'BBmap merging final result: {numRetained} of {numPairs} merged reads ({pcTotal} %)', config["STATS_FILE"])
             
         tt = round(timeit.default_timer() - start_time3, 2)
         save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
