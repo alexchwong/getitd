@@ -128,11 +128,33 @@ def bbmap_process(config):
         f'out={temp_path}/merged.fastq', 
         f'outu={temp_path}/unmerged.fastq',
         f'ihist={temp_path}/hist.tsv'
-    ], capture_output=True, text=True)
-    bbmap_log += ret.stderr + '\n'
+    ], capture_output=True, text=True)    
+    
+    blog = ret.stderr
+    logLines = blog.split('\n')
+    numPairs = 0
+    numMerged = 0
+    for i in range(len(logLines)):
+        if logLines[i].find("Pairs:") > -1:
+            numPairs = int(logLines[i].split('\t')[1])
+        elif logLines[i].find("Joined:") > -1:
+            numMerged = int(logLines[i].split('\t')[1])
+    
+    if numPairs > 0:
+        pcMerged = round(numMerged * 100 / numPairs, 2)
+        if config["BBMAP_TRIMQ"] > -1:
+            save_stats(f'Phase 1 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
+        else:
+            save_stats(f'Merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
+        
+    tt = round(timeit.default_timer() - start_time, 2)
+    save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
+    
+    bbmap_log += blog + '\n'
     
     # Phase 2 merging
     if config["BBMAP_TRIMQ"] > -1:
+        start_time2 = timeit.default_timer()
         ret = subprocess.run([
             f'{bbmap_path}/bbduk.sh', 
             f'in={temp_path}/unmerged.fastq',
@@ -147,7 +169,6 @@ def bbmap_process(config):
             f'out={temp_path}/merged2.fastq',
             f'ihist={temp_path}/hist2.tsv'
         ], capture_output=True, text=True)
-        bbmap_log += ret.stderr + '\n'
         
         # Concatenate into first file
         f1 = open(f'{temp_path}/merged.fastq', 'a+')
@@ -156,19 +177,58 @@ def bbmap_process(config):
         f1.close()
         f2.close()
 
+        blog = ret.stderr
+        logLines = blog.split('\n')
+        numPairs = 0
+        numMerged = 0
+        for i in range(len(logLines)):
+            if logLines[i].find("Pairs:") > -1:
+                numPairs = int(logLines[i].split('\t')[1])
+            elif logLines[i].find("Joined:") > -1:
+                numMerged = int(logLines[i].split('\t')[1])
+        
+        if numPairs > 0:
+            pcMerged = round(numMerged * 100 / numPairs, 2)
+            save_stats(f'Phase 2 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
+            
+        tt = round(timeit.default_timer() - start_time2, 2)
+        save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
+        
+        bbmap_log += blog + '\n'
+
+
     # Phase 3 - average bqs filtering
     if config["BBMAP_BQS"] > -1:
+        start_time3 = timeit.default_timer()
         ret = subprocess.run([
             f'{bbmap_path}/bbduk.sh', 
             f'in={temp_path}/merged.fastq',
             f'out={temp_path}/cleaned.fastq', 
             "maq=30"
         ], capture_output=True, text=True)
-        bbmap_log += ret.stderr + '\n'
+
+        blog = ret.stderr
+        logLines = blog.split('\n')
+        numInput = 0
+        numRetained = 0
+        for i in range(len(logLines)):
+            if logLines[i].find("Input:") > -1:
+                numInput = int(logLines[i].split('\t')[1])
+            elif logLines[i].find("Result:") > -1:
+                numRetained = int(logLines[i].split('\t')[1])
+        
+        if numInput > 0:
+            pcRetained = round(numRetained * 100 / numInput, 2)
+            save_stats(f'BQS filtering retained {numRetained} of {numInput} merged reads ({pcRetained} %)', config["STATS_FILE"])
+            
+        tt = round(timeit.default_timer() - start_time3, 2)
+        save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
+        
+        bbmap_log += blog + '\n'
     else:
         os.rename(f'{temp_path}/merged.fastq', f'{temp_path}/cleaned.fastq')
     
-    save_stats(f'BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec',
+    save_stats(f'BBmap total time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
 
     with open(config["BBLOG"], 'w') as f:
@@ -748,7 +808,9 @@ def alignITD(prealigns_df, config):
     mutList = []
     mutNames = []
 
-    for i in range(len(df)):
+    save_stats(f'Aligning - {len(df)} reads', config["STATS_FILE"])    
+
+    for i in tqdm(range(len(df))):
         seq = df.iloc[i]["Sequence"]
         rC_S, ops_S, rSeq, startC, endC = getHGVS(seq, REF, config)
         if startC == -1 or endC == -1:
@@ -896,9 +958,9 @@ def alignITD(prealigns_df, config):
     dict = {'name': mutName, 'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf, 'coverage': mutNorm, 
             'insertPos': insertPos, 'insertRegion' : insertRegion, 'co_mutations' : coMuts} 
     res = pd.DataFrame(dict)
-    print("Top inserts")
+    # print("Top inserts")
     res_s = res[res["netInsert"] > 5]
-    print(res_s.head(10))
+    # print(res_s.head(10))
     
     ######################################################################
     # Write results    
@@ -907,8 +969,8 @@ def alignITD(prealigns_df, config):
 
     summa = res.groupby(["netInsert"])[["vaf_percent", "counts"]].sum().reset_index()
     summa = summa.sort_values(by = 'vaf_percent', ascending = False)
-    print("Top insert lengths")
-    print(summa.head(10))
+    # print("Top insert lengths")
+    # print(summa.head(10))
     
     ######################################################################
     # Write results    
