@@ -416,6 +416,336 @@ def str_to_bool(string):
     else:
         raise argparse.ArgumentTypeError('Boolean value (True or False) expected.')
 
+class Mutation(object):
+    def __init__(
+        self,
+        mutType = "ins",
+        pos_str = None,
+        ins_str = "",
+        counts = 0):
+        
+        self.mutType = mutType
+        assert pos_str is not None
+        self.pos = [int(i) for i in pos_str.split("-")]
+        if len(self.pos) == 1:
+            self.pos.append(self.pos[0])
+        self.ins_str = ins_str
+        self.counts = counts
+        self.comutations = {}
+        
+    def add(self, count):
+        self.counts += count
+        return(self)
+    
+    def nameMut(self):
+        if self.mutType == "snp":
+            return(f"{self.pos[0]}{self.ins_str}")
+        elif self.pos[0] == self.pos[1]:
+            return(f"{self.pos[0]}{self.mutType}{self.ins_str}")
+        return(f"{self.pos[0]}-{self.pos[1]}{self.mutType}{self.ins_str}")
+    
+    def addComutation(self, mutName, counts):
+        if mutName in self.comutations.keys():
+            self.comutations[mutName] += counts
+        else:
+            self.comutations[mutName] = counts
+        return(self)
+    
+    def netInsert(self):
+        if self.mutType[0:3] == "ins":
+            return len(self.ins_str)
+        elif self.mutType == "del":
+            return -self.pos[1] + self.pos[0] - 1
+        elif self.mutType[0:6] == "delins":
+            return len(self.ins_str) - self.pos[1] + self.pos[0] - 1
+        elif self.mutType == "dup":
+            return self.pos[1] - self.pos[0] + 1
+        else:
+            return 0
+        
+    def getInsertPos(self):
+        if self.mutType[0:3] == "ins":
+            return self.pos[0]
+        elif self.mutType == "del":
+            return self.pos[0]
+        elif self.mutType[0:6] == "delins":
+            return self.pos[0]
+        elif self.mutType == "dup":
+            return self.pos[1] + 1
+        else:
+            return self.pos[0]
+
+def getHGVS(seq, ref, config, verbose = False):
+    """
+    Aligns a sequence with respect to the reference
+    - returns 3 lists: coordinates, operations, insert sequence
+    - Also returns start / end coordinates of alignment (-1 if not aligned)
+    """
+    
+    q_alns = []
+    r_alns = []
+
+    aligner2 = config["ALIGNER"]
+
+    aln = aligner2.align(seq, ref)
+    if not aln:
+        return [],[],[], -1, -1
+    if verbose:
+        print(aln[-1])
+        
+    coords = aln[-1].coordinates
+    # print(coords)
+    minAlignLen = 6
+    for j in range(len(coords[0]) - 1):
+        if coords[0][j+1] - coords[0][j] >= minAlignLen and coords[1][j+1] - coords[1][j] >= minAlignLen:
+            # if match must be a block of at least 6
+            q_alns.append(coords[0][j:j+2])
+            r_alns.append(coords[1][j:j+2])
+            
+    q_alns = np.array(q_alns)
+    r_alns = np.array(r_alns)
+
+    # No alignment
+    if q_alns.shape[0] == 0:
+        return [],[],[], -1, -1
+
+    # Boundaries of alignment
+    ref_start, ref_end = r_alns[0][0], r_alns[-1][1]
+
+    # Insufficient alignment to reference
+    minRefAlignFraction = 0.4
+    if (ref_end - ref_start) < minRefAlignFraction * len(ref):
+        return [],[],[], -1, -1                
+    
+    # Single alignment - likely WT
+    if q_alns.shape[0] == 1:
+        return [],[],[], ref_start, ref_end
+   
+    if verbose:
+        print(q_alns)
+        print(r_alns)
+
+    # calculate the sum inserted / deleted. Abort if this exceeds 70% of length of sequence
+    nTotIndel = 0    
+    ops, rC, rSeq = [],[],[]
+    for i in range(len(q_alns) - 1):
+        if q_alns[i+1][0] == q_alns[i][1]:
+            # no gaps in query sequence, i.e. no insertion
+            if r_alns[i+1][0] > r_alns[i][1]:
+                # gap in reference alignment deletion
+                ops.append("del")
+                rSeq.append("")
+                rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}")
+                nTotIndel += (r_alns[i][1] - r_alns[i+1][0])
+            else:
+                pass
+        else:
+            if r_alns[i+1][0] == r_alns[i][1]:
+                # simple insertion
+                insSeq = seq[q_alns[i][1]:q_alns[i+1][0]]
+                nTotIndel += len(insSeq)
+                
+                # check if duplication
+                isDup = False
+                if len(insSeq) <= q_alns[i][1]:
+                    dupSeq = seq[(q_alns[i][1] - len(insSeq)):(q_alns[i+1][0] - len(insSeq))]
+                    if insSeq == dupSeq:
+                        isDup = True
+                        ops.append("dup")
+                        rSeq.append("")
+                        rC.append(f"{str(r_alns[i][1] - len(insSeq))}-{str(r_alns[i][1] - 1)}")
+                if not isDup:
+                    rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i+1][0]+1)}")
+                    ops.append(f"ins[{len(insSeq)}]")
+                    rSeq.append(insSeq)
+
+            elif r_alns[i+1][0] > r_alns[i][1]:
+                # delins
+                insSeq = seq[q_alns[i][1]:q_alns[i+1][0]]
+                rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}")
+                ops.append(f"delins[{r_alns[i+1][0] - r_alns[i][1]},{len(insSeq)}]")
+                rSeq.append(insSeq)
+                nTotIndel += len(insSeq) + (r_alns[i+1][0] - r_alns[i][1]) # del + ins
+            else:
+                # overlapping alignment preceeded by novel insert, treat as insertion
+                # true insert length is longer than mapped
+                # attach duplicated alignment to end of novel insert
+                dupLen = r_alns[i][1] - r_alns[i+1][0]
+                insSeq = seq[q_alns[i][1]:(q_alns[i+1][0] + dupLen)]
+                rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i][1]+1)}")
+                ops.append(f"ins[{len(insSeq)}]")
+                rSeq.append(insSeq)
+
+    maxFracIsIndel = 0.7
+    if (nTotIndel + ref_end - ref_start) * maxFracIsIndel < nTotIndel:
+        return [],[],[], -1, -1
+
+    if verbose:
+        print([f"{c}{o}{s}" for c, o, s in zip(rC, ops, rSeq)])
+    
+    return rC, ops, rSeq, ref_start, ref_end
+
+def generateMutSeq(ref, hgvs, returnComplex = False):
+    """
+    Generates a sequence which is a mutated sequence from the given reference,
+    using the given hgvs instructions (inserts / deletions only, not SNPs)
+    """
+    
+    refStarts = []
+    refEnds = []
+    insSeqs = []
+    
+    for hg in hgvs:
+        posStart = -1
+        posEnd = -1
+        seq = ""
+        if hg.find("delins") > -1:
+            mutStart = hg.find("delins")
+            pos = hg[0:mutStart]
+            seq = hg[mutStart+6:]
+            if seq.find("]") > -1:
+                seq = seq.split("]")[1]
+            if pos.find("-") > 0:
+                posStart, posEnd = pos.split("-")
+                posStart = int(posStart)
+                posEnd = int(posEnd) + 1
+            else:
+                posStart = int(pos)
+                posEnd = int(pos) + 1
+        elif hg.find("ins") > -1:
+            mutStart = hg.find("ins")
+            pos = hg[0:mutStart]
+            seq = hg[mutStart+3:]
+            if seq.find("]") > -1:
+                seq = seq.split("]")[1]
+            if pos.find("-") > 0:
+                posStart, posEnd = pos.split("-")
+                posStart = int(posStart)
+                posEnd = int(posEnd) - 1
+            else:
+                posStart = int(pos)
+                posEnd = int(pos) - 1
+        elif hg.find("del") > -1:
+            mutStart = hg.find("del")
+            pos = hg[0:mutStart]
+            if pos.find("-") > 0:
+                posStart, posEnd = pos.split("-")
+                posStart = int(posStart)
+                posEnd = int(posEnd) + 1
+            else:
+                posStart = int(pos)
+                posEnd = int(pos) + 1
+        elif hg.find("dup") > -1:
+            mutStart = hg.find("dup")
+            pos = hg[0:mutStart]
+            if pos.find("-") > 0:
+                posStart, posEnd = pos.split("-")
+                posStart = int(posStart)
+                posEnd = int(posEnd) + 1
+            else:
+                posStart = int(pos)
+                posEnd = int(pos) + 1
+            seq = ref[posStart:posEnd]
+            posEnd = posStart # as this is duplication
+        else:
+            pass
+        
+        if posStart > -1:
+            refStarts.append(posStart)
+            refEnds.append(posEnd)
+            insSeqs.append(seq)
+        
+    refStarts = np.array(refStarts)
+    refEnds = np.array(refEnds)
+    insSeqs = np.array(insSeqs)
+    
+    arg_sort = np.argsort(refStarts)
+    refStarts = refStarts[arg_sort]
+    refEnds = refEnds[arg_sort]
+    insSeqs = insSeqs[arg_sort]
+    
+    refPos = 0
+    newRef = ""
+    for rS, rE, iS in zip(refStarts, refEnds, insSeqs):
+        if rS > refPos:
+            newRef += ref[refPos:rS]
+            refPos = rE
+            newRef += iS
+    
+    newRef += ref[refPos:]
+    
+    if returnComplex:
+        return newRef, refStarts, refEnds, insSeqs
+    
+    return newRef
+
+def getRefLoc(pos, refStarts, refEnds, insSeqs):
+    # gets the true reference position given the outputs of generateMutSeq
+    
+    fudgeF = 0
+    for rS, rE, iS in zip(refStarts, refEnds, insSeqs):
+        if pos + fudgeF < rS:
+            return pos + fudgeF
+        altF = rE - rS + len(iS)
+        if altF > 0:
+            # net insertion
+            if pos + fudgeF - rS < altF:
+                # inside insert
+                return -1
+        fudgeF -= altF
+    return pos + fudgeF
+
+def findSNP(seq, ref, delins_hgvs):
+    """
+    Finds and describes any SNPs of sequence, with respect to reference
+    mutated with deletion / insertion hgvs instructions
+    """
+    
+    synRef, refStarts, refEnds, insSeqs = generateMutSeq(ref, delins_hgvs, returnComplex = True)
+    aln = aligner2.align(seq, synRef)
+    
+    q_alns, r_alns = [], []
+    coords = aln[-1].coordinates
+    minAlignLen = 6
+    for j in range(len(coords[0]) - 1):
+        if coords[0][j+1] - coords[0][j] >= minAlignLen and coords[1][j+1] - coords[1][j] >= minAlignLen:
+            # if match must be a block of at least 6
+            q_alns.append(coords[0][j:j+2])
+            r_alns.append(coords[1][j:j+2])
+            
+    q_alns = np.array(q_alns)
+    r_alns = np.array(r_alns)
+
+    snpCoords = []
+    snpRefs = []
+    snpSubs = []
+    
+    for i in range(len(q_alns)):
+        qlen = q_alns[i][1] - q_alns[i][0]
+        rlen = r_alns[i][1] - r_alns[i][0]
+
+        qseq = seq[q_alns[i][0]:q_alns[i][1]]
+        rseq = synRef[r_alns[i][0]:r_alns[i][1]]
+        assert len(qseq) == len(rseq)
+            
+        r_start = r_alns[i][0]
+        for j in range(qlen):
+            if qseq[j] != rseq[j]:
+                snpCoords.append(r_start + j)
+                snpRefs.append(rseq[j])
+                snpSubs.append(qseq[j])
+    
+    # Correct snpCoords
+    realCoords, realRefs, realSubs = [], [], []
+    for i in range(len(snpCoords)):
+        pos = getRefLoc(snpCoords[i], refStarts, refEnds, insSeqs)
+        if pos > 0:
+            realCoords.append(pos)
+            realRefs.append(snpRefs[i])
+            realSubs.append(snpSubs[i])
+
+    return realCoords, realRefs, realSubs
+
 def parse_config_from_cmdline(config):
     """
     Get analysis parameters from commandline.
@@ -641,6 +971,16 @@ def main(config):
 
     ### NEW MERGEITD PIPELINE
 
+    config["ALIGNER"] = Align.PairwiseAligner()
+
+    config["ALIGNER"].mode = 'global'
+    config["ALIGNER"].match_score = config["COST_MATCH"]
+    config["ALIGNER"].mismatch_score = config["COST_MISMATCH"]
+    config["ALIGNER"].open_gap_score = config["COST_GAPOPEN"]
+    config["ALIGNER"].extend_gap_score = config["COST_GAPEXTEND"]
+    config["ALIGNER"].target_end_gap_score = 0.0
+    config["ALIGNER"].query_end_gap_score = 0.0
+
     bbmap_log = bbmap_process_quick(
         config["R1"], config["R2"], 
         bbmap_path = config["BBMAP_PATH"], 
@@ -662,6 +1002,12 @@ def main(config):
     })
     prealigns = prealigns.sort_values(by = "Counts", ascending = False).reset_index(drop = True)
     prealigns = prealigns[prealigns["Counts"] >= config["MIN_READ_COPIES"]]
+
+    ### MEASURE SEQUENCE LENGTH
+    prealigns["SeqLength"] = 0
+    for i in range(len(prealigns)):
+        prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
+
 
     ### END MERGEITD PIPELINE
 
