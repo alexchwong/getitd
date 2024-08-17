@@ -725,6 +725,7 @@ def findSNP(seq, ref, delins_hgvs, config):
 
 def alignITD(prealigns_df, config):
     REF = config["REF"]
+    aligner2 = config["ALIGNER"]
     
     start_time = timeit.default_timer()
     
@@ -1106,10 +1107,10 @@ def main(config):
     config["STATS_FILE"] = os.path.join(config["OUT_DIR"], "stats.txt")
     config["CONFIG_FILE"] = os.path.join(config["OUT_DIR"], "config.txt")
 
-    config["BBLOG"] = "bbmap.log"
-    config["ALIGN_FILE"] = "alignClasses.csv"
-    config["MUTATION_FILE"] = "mutation_vaf.csv"
-    config["NETINSERT_FILE"] = "netInserts_vaf.csv"
+    config["BBLOG"] = os.path.join(config["OUT_DIR"], "bbmap.log")
+    config["ALIGN_FILE"] = os.path.join(config["OUT_DIR"], "alignClasses.csv")
+    config["MUTATION_FILE"] = os.path.join(config["OUT_DIR"], "mutation_vaf.csv")
+    config["NETINSERT_FILE"] = os.path.join(config["OUT_DIR"], "netInserts_vaf.csv")
     
     # make all input & output file / folder names absolute paths
     for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", 
