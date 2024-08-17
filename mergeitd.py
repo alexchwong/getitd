@@ -127,7 +127,7 @@ def bbmap_process(config):
         f'in1={fastq1}', f'in2={fastq2}',
         f'out={temp_path}/merged.fastq', 
         f'outu={temp_path}/unmerged.fastq',
-        f'ihist={temp_path}/hist.tsv'
+        f'ihist={config["OUT_DIR"]}/hist.tsv'
     ], capture_output=True, text=True)    
     
     blog = ret.stderr
@@ -167,7 +167,7 @@ def bbmap_process(config):
             f'{bbmap_path}/bbmerge.sh', 
             f'in={temp_path}/qtrimmed.fastq',
             f'out={temp_path}/merged2.fastq',
-            f'ihist={temp_path}/hist2.tsv'
+            f'ihist={config["OUT_DIR"]}/hist2.tsv'
         ], capture_output=True, text=True)
         
         # Concatenate into first file
@@ -179,17 +179,17 @@ def bbmap_process(config):
 
         blog = ret.stderr
         logLines = blog.split('\n')
-        numPairs = 0
-        numMerged = 0
+        numPairs2 = 0
+        numMerged2 = 0
         for i in range(len(logLines)):
             if logLines[i].find("Pairs:") > -1:
-                numPairs = int(logLines[i].split('\t')[1])
+                numPairs2 = int(logLines[i].split('\t')[1])
             elif logLines[i].find("Joined:") > -1:
                 numMerged = int(logLines[i].split('\t')[1])
         
-        if numPairs > 0:
-            pcMerged = round(numMerged * 100 / numPairs, 2)
-            save_stats(f'Phase 2 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
+        if numPairs2 > 0:
+            pcMerged2 = round(numMerged2 * 100 / numPairs2, 2)
+            save_stats(f'Phase 2 merging {numMerged2} of {numPairs2} pairs merged ({pcMerged2} %)', config["STATS_FILE"])
             
         tt = round(timeit.default_timer() - start_time2, 2)
         save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
@@ -965,9 +965,12 @@ def alignITD(prealigns_df, config):
     dict = {'name': mutName, 'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf, 'coverage': mutNorm, 
             'insertPos': insertPos, 'insertRegion' : insertRegion, 'co_mutations' : coMuts} 
     res = pd.DataFrame(dict)
-    # print("Top inserts")
+    print("Top inserts")
     res_s = res[res["netInsert"] > 5]
-    # print(res_s.head(10))
+    res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", "insertRegion"]]
+    
+    res_txt = res_s.head(10).tostring()
+    save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
     # Write results    
@@ -976,15 +979,18 @@ def alignITD(prealigns_df, config):
 
     summa = res.groupby(["netInsert"])[["vaf_percent", "counts"]].sum().reset_index()
     summa = summa.sort_values(by = 'vaf_percent', ascending = False)
-    # print("Top insert lengths")
-    # print(summa.head(10))
+    print("Top insert lengths")
+    summa_s = summa[summa["netInsert"] > 5]
+    res_txt = summa_s.head(10).tostring()
+    save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
     # Write results    
     summa.to_csv(config["NETINSERT_FILE"], sep = ",", index=False)
     ######################################################################
     
-    save_stats(f'mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec', config["STATS_FILE"])    
+    tt = round(timeit.default_timer() - start_time, 2)
+    save_stats(f'mergeITD time taken - {tt} sec', config["STATS_FILE"])    
     return 0
 
 def parse_config_from_cmdline(config):
