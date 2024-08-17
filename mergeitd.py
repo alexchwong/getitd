@@ -969,7 +969,7 @@ def alignITD(prealigns_df, config):
     res_s = res[res["netInsert"] > 5]
     res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", "insertRegion"]]
     
-    res_txt = res_s.head(10).tostring()
+    res_txt = res_s.head(10).tostring(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
@@ -981,7 +981,7 @@ def alignITD(prealigns_df, config):
     summa = summa.sort_values(by = 'vaf_percent', ascending = False)
     print("Top insert lengths")
     summa_s = summa[summa["netInsert"] > 5]
-    res_txt = summa_s.head(10).tostring()
+    res_txt = summa_s.head(10).tostring(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
