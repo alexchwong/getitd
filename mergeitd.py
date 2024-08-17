@@ -670,13 +670,15 @@ def getRefLoc(pos, refStarts, refEnds, insSeqs):
         fudgeF -= altF
     return pos + fudgeF
 
-def findSNP(seq, ref, delins_hgvs):
+def findSNP(seq, ref, delins_hgvs, config):
     """
     Finds and describes any SNPs of sequence, with respect to reference
     mutated with deletion / insertion hgvs instructions
     """
     
     synRef, refStarts, refEnds, insSeqs = generateMutSeq(ref, delins_hgvs, returnComplex = True)
+    
+    aligner2 = config["ALIGNER"]
     aln = aligner2.align(seq, synRef)
     
     q_alns, r_alns = [], []
@@ -801,7 +803,7 @@ def alignITD(prealigns_df, config):
         snpNameList = []
         N_List = []
 
-        snpCoords, snpRefs, snpSubs = findSNP(seq, REF, HGVSMutNames)
+        snpCoords, snpRefs, snpSubs = findSNP(seq, REF, HGVSMutNames, config)
 
         for sC, sR, sS in zip(snpCoords, snpRefs, snpSubs):
             if sS == "N":
@@ -1134,7 +1136,7 @@ def main(config):
     ## CHANGE TO OUTPUT FOLDER
     #  this is required for parallel child processes to retrieve
     #  the correct config.txt file later on despite static / constant filename
-    os.chdir(config["OUT_DIR"])
+    # os.chdir(config["OUT_DIR"])
     save_config(config, config["CONFIG_FILE"])
 
     ## REMOVE OLD STATS & LOG FILE & START CREATING A NEW ONE
@@ -1186,7 +1188,7 @@ def main(config):
 
     ########################################
     # CHANGE BACK TO ORIGINAL / PARENT DIRECTORY
-    os.chdir("..")
+    # os.chdir("..")
 
     shutil.rmtree(config["TMP_DIR"])
 
