@@ -747,7 +747,7 @@ def alignITD(prealigns_df, config):
 
     for i in range(len(df)):
         seq = df.iloc[i]["Sequence"]
-        rC_S, ops_S, rSeq, startC, endC = getHGVS(seq, REF)
+        rC_S, ops_S, rSeq, startC, endC = getHGVS(seq, REF, config)
         if startC == -1 or endC == -1:
             continue
 
