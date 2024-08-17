@@ -32,11 +32,11 @@ def save_config(config, filename):
     """
     with open(filename, "w") as f:
         f.write("Commandline_argument\tValue\n")
-        f.write("Time\t{}\n".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%d")))
-        f.write("getITD_version\t{}\n".format(__version__))
+        f.write(f'Time\t{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%d")}\n')
+        f.write(f'mergeITD_version\t{__version__}\n')
         for param in sorted(config.keys()):
             if param not in ["ANNO", "DOMAINS"]:
-                f.write("{}\t{}\n".format(param, config[param]))
+                f.write(f'{param}\t{config[param]}\n')
 
 def load_config(filename):
     """
@@ -62,8 +62,8 @@ def load_config(filename):
                         config[key] = val
 
     # recognize string as dict
-    if "COST_ALIGNED" in config:
-        config["COST_ALIGNED"] = eval(config["COST_ALIGNED"])
+    # if "COST_ALIGNED" in config:
+        # config["COST_ALIGNED"] = eval(config["COST_ALIGNED"])
     return config
 
 
@@ -106,7 +106,10 @@ def parallelize(function, args, cores):
     with multiprocessing.Pool(cores) as p:
         return p.map(function, args)
 
-def bbmap_process_quick(fastq1, fastq2, bbmap_path, temp_path):
+def bbmap_process(config):
+    fastq1, fastq2 = config["R1"], config["R2"]
+    bbmap_path, temp_path = config["BBMAP_PATH"], config["TMP_DIR"]
+
     assert os.path.isdir(bbmap_path)
     assert os.path.isfile(f"{bbmap_path}/bbmerge.sh")
     assert os.path.isfile(f"{bbmap_path}/bbduk.sh")
@@ -116,44 +119,6 @@ def bbmap_process_quick(fastq1, fastq2, bbmap_path, temp_path):
     if os.path.isdir(temp_path):
         shutil.rmtree(temp_path)
         
-    subprocess.run(["mkdir", temp_path])
-    
-    bbmap_log = ""
-    
-    # Phase 1 merging
-    ret = subprocess.run([
-        f"{bbmap_path}/bbmerge.sh", 
-        f"in1={fastq1}", f"in2={fastq2}",
-        f"out={temp_path}/merged.fastq", 
-        f"outu={temp_path}/unmerged.fastq",
-        f"ihist={temp_path}/hist.tsv"
-    ], capture_output=True, text=True)
-    bbmap_log += ret.stderr + '\n'
-
-    # Phase 3 - average bqs filtering
-    ret = subprocess.run([
-        f"{bbmap_path}/bbduk.sh", 
-        f"in={temp_path}/merged.fastq",
-        f"out={temp_path}/cleaned.fastq", 
-        "maq=25"
-    ], capture_output=True, text=True)
-    bbmap_log += ret.stderr + '\n'
-    
-    print(f"BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec")
-    return bbmap_log
-
-def bbmap_process(fastq1, fastq2, bbmap_path, temp_path):
-    assert os.path.isdir(bbmap_path)
-    assert os.path.isfile(f"{bbmap_path}/bbmerge.sh")
-    assert os.path.isfile(f"{bbmap_path}/bbduk.sh")
-    
-    start_time = timeit.default_timer()
-    
-    if os.path.isdir(temp_path):
-        shutil.rmtree(temp_path)
-        
-    subprocess.run(["mkdir", temp_path])
-    
     bbmap_log = ""
     
     # Phase 1 merging
@@ -167,40 +132,50 @@ def bbmap_process(fastq1, fastq2, bbmap_path, temp_path):
     bbmap_log += ret.stderr + '\n'
     
     # Phase 2 merging
-    ret = subprocess.run([
-        f"{bbmap_path}/bbduk.sh", 
-        f"in={temp_path}/unmerged.fastq",
-        f"out={temp_path}/qtrimmed.fastq", 
-        "qtrim=r", "trimq=20"
-    ], capture_output=True, text=True)
-    bbmap_log += ret.stderr + '\n'
-    
-    ret = subprocess.run([
-        f"{bbmap_path}/bbmerge.sh", 
-        f"in={temp_path}/qtrimmed.fastq",
-        f"out={temp_path}/merged2.fastq",
-        f"ihist={temp_path}/hist2.tsv"
-    ], capture_output=True, text=True)
-    bbmap_log += ret.stderr + '\n'
-    
-    # Concatenate into first file
-    f1 = open(f"{temp_path}/merged.fastq", 'a+')
-    f2 = open(f"{temp_path}/merged2.fastq", 'r')
-    f1.write(f2.read())
-    f1.close()
-    f2.close()
+    if config["BBMAP_TRIMQ"] > -1:
+        ret = subprocess.run([
+            f"{bbmap_path}/bbduk.sh", 
+            f"in={temp_path}/unmerged.fastq",
+            f"out={temp_path}/qtrimmed.fastq", 
+            "qtrim=r", f"trimq={config["BBMAP_TRIMQ"]}"
+        ], capture_output=True, text=True)
+        bbmap_log += ret.stderr + '\n'
+        
+        ret = subprocess.run([
+            f"{bbmap_path}/bbmerge.sh", 
+            f"in={temp_path}/qtrimmed.fastq",
+            f"out={temp_path}/merged2.fastq",
+            f"ihist={temp_path}/hist2.tsv"
+        ], capture_output=True, text=True)
+        bbmap_log += ret.stderr + '\n'
+        
+        # Concatenate into first file
+        f1 = open(f"{temp_path}/merged.fastq", 'a+')
+        f2 = open(f"{temp_path}/merged2.fastq", 'r')
+        f1.write(f2.read())
+        f1.close()
+        f2.close()
 
     # Phase 3 - average bqs filtering
-    ret = subprocess.run([
-        f"{bbmap_path}/bbduk.sh", 
-        f"in={temp_path}/merged.fastq",
-        f"out={temp_path}/cleaned.fastq", 
-        "maq=30"
-    ], capture_output=True, text=True)
-    bbmap_log += ret.stderr + '\n'
+    if config["BBMAP_BQS"] > -1:
+        ret = subprocess.run([
+            f"{bbmap_path}/bbduk.sh", 
+            f"in={temp_path}/merged.fastq",
+            f"out={temp_path}/cleaned.fastq", 
+            "maq=30"
+        ], capture_output=True, text=True)
+        bbmap_log += ret.stderr + '\n'
+    else:
+        os.rename(f"{temp_path}/merged.fastq", f"{temp_path}/cleaned.fastq")
     
-    print(f"BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec")
-    return bbmap_log
+    save_stats(f"BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec",
+        config["STATS_FILE"])
+
+    with open(config["BBLOG"], 'w') as f:
+        f.write(bbmap_log)
+
+    assert os.path.isfile(f"{temp_path}/cleaned.fastq")
+    return f"{temp_path}/cleaned.fastq"
 
 def is_gz_file(filename):
     """
@@ -243,7 +218,7 @@ def read_fastq(fastq_file):
                 reads.append(read_seq)
                 line = f.readline()
     except IOError as e:
-        print("---\nCould not read fastq file {}!\n---".format(fastq_file))
+        print(f'---\nCould not read fastq file {fastq_file}!\n---')
     
     return reads
 
@@ -972,10 +947,14 @@ def parse_config_from_cmdline(config):
     parser.add_argument('-gap_extend', help="alignment cost of gap extension (default -0.5)", default="-0.5", type=float)
     parser.add_argument('-match', help="alignment cost of base match (default 5)", default="5", type=int)
     parser.add_argument('-mismatch', help="alignment cost of base mismatch (default -15)", default="-15", type=int)
+
+    # bbmerge parameters
+    parser.add_argument('-trimq_merging', help="Whether to attempt to merge reads a second time by first 3'-trimming reads by quality score cutoff prior (default = 20). -1 to disable", default="20", type=int)
+
     # parser.add_argument('-max_trailing_bp', help="maximum number of aligned bp between the start / end of an insertion and the start / end of the read to consider the insertion 'trailing'. Trailing insertions are not required to be in-frame and will be considered ITDs even if the matching WT tandem is not directly adjacent. Set this to 0 to disable (default 0).", default="0", type=int)
     # parser.add_argument('-minscore_inserts', help="fraction of max possible alignment score required for ITD detection and insert collapsing (default 0.5)", default="0.5", type=float)
     # parser.add_argument('-minscore_alignments', help="fraction of max possible alignment score required for a read to pass when aligning reads to amplicon reference (default 0.4)", default="0.4", type=float)
-    # parser.add_argument("-min_bqs", help="minimum average base quality score (BQS) required by each read (default 30)", type=int, default=30)
+    parser.add_argument("-min_bqs", help="minimum average base quality score (BQS) required by each read (default 30). -1 to disable", type=int, default=30)
     # parser.add_argument('-min_read_length', help="minimum read length in bp required after N-trimming (default 100)", default="100", type=int)
     parser.add_argument('-min_read_copies', help="minimum number of copies of each read required for processing (1 to turn filter off, 2 (default) to discard unique reads)", default="2", type=int)
     parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered by getITD. For non-trailing ITDs, this is the minimum insert length; for trailing ITDs, it is the minimum number of bp of a potentially longer ITD which have to be sequenced (default 6).", default="6", type=int)
@@ -994,6 +973,9 @@ def parse_config_from_cmdline(config):
     config["ANNO_FILE"] = cmd_args.anno
     
     config["BBMAP_PATH"] = cmd_args.bbmap
+    config["BBMAP_TRIMQ"] = cmd_args.trimq_merging
+    config["BBMAP_BQS"] = cmd_args.min_bqs
+    
     assert os.path.isdir(config["BBMAP_PATH"])
     assert os.path.isfile(f"{config["BBMAP_PATH"]}/bbmerge.sh")
     assert os.path.isfile(f"{config["BBMAP_PATH"]}/bbduk.sh")
@@ -1141,7 +1123,6 @@ def main(config):
     
     # config["DOMAINS"] = get_domains(config["ANNO"])
     config["REF"] = read_reference(config["REF_FILE"]).upper()
-    # config["COST_ALIGNED"] = {(c1, c2): get_alignment_score(c1, c2, config) for c1, c2 in itertools.product(["A","T","G","C","Z","N"], repeat=2)}
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
@@ -1163,7 +1144,7 @@ def main(config):
         # os.remove(os.path.join(config["OUT_DIR"], "incomplete-wt-tandem.log"))
     except OSError:
         pass
-    save_stats("\n==== PROCESSING SAMPLE {} ====".format(config["SAMPLE"]), config["STATS_FILE"])
+    save_stats(f'\n==== PROCESSING SAMPLE {config["SAMPLE"]} ====', config["STATS_FILE"])
 
     ### NEW MERGEITD PIPELINE
 
@@ -1177,16 +1158,10 @@ def main(config):
     config["ALIGNER"].target_end_gap_score = 0.0
     config["ALIGNER"].query_end_gap_score = 0.0
 
-    bbmap_log = bbmap_process_quick(
-        config["R1"], config["R2"], 
-        bbmap_path = config["BBMAP_PATH"], 
-        temp_path = config["TMP_DIR"])
+    cleaned_fastq = bbmap_process(config)
     
-    with open(config["BBLOG"], 'w') as f:
-        f.write(bbmap_log)
-
     ### READS MERGED & CLEANED FASTQ READS
-    reads = read_fastq(f"{config["TMP_DIR"]}/cleaned.fastq")
+    reads = read_fastq(cleaned_fastq)
 
     ### GET UNIQUE READS
     unique_reads = Counter(reads)
@@ -1206,6 +1181,8 @@ def main(config):
 
     alignITD(prealigns, config)
 
+    save_stats(f"mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec",
+        config["STATS_FILE"])
     ### END MERGEITD PIPELINE
 
     ########################################
