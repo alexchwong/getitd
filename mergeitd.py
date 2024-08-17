@@ -111,8 +111,8 @@ def bbmap_process(config):
     bbmap_path, temp_path = config["BBMAP_PATH"], config["TMP_DIR"]
 
     assert os.path.isdir(bbmap_path)
-    assert os.path.isfile(f"{bbmap_path}/bbmerge.sh")
-    assert os.path.isfile(f"{bbmap_path}/bbduk.sh")
+    assert os.path.isfile(f'{bbmap_path}/bbmerge.sh')
+    assert os.path.isfile(f'{bbmap_path}/bbduk.sh')
     
     start_time = timeit.default_timer()
     
@@ -123,35 +123,35 @@ def bbmap_process(config):
     
     # Phase 1 merging
     ret = subprocess.run([
-        f"{bbmap_path}/bbmerge.sh", 
-        f"in1={fastq1}", f"in2={fastq2}",
-        f"out={temp_path}/merged.fastq", 
-        f"outu={temp_path}/unmerged.fastq",
-        f"ihist={temp_path}/hist.tsv"
+        f'{bbmap_path}/bbmerge.sh', 
+        f'in1={fastq1}', f'in2={fastq2}',
+        f'out={temp_path}/merged.fastq', 
+        f'outu={temp_path}/unmerged.fastq',
+        f'ihist={temp_path}/hist.tsv'
     ], capture_output=True, text=True)
     bbmap_log += ret.stderr + '\n'
     
     # Phase 2 merging
     if config["BBMAP_TRIMQ"] > -1:
         ret = subprocess.run([
-            f"{bbmap_path}/bbduk.sh", 
-            f"in={temp_path}/unmerged.fastq",
-            f"out={temp_path}/qtrimmed.fastq", 
-            "qtrim=r", f"trimq={config["BBMAP_TRIMQ"]}"
+            f'{bbmap_path}/bbduk.sh', 
+            f'in={temp_path}/unmerged.fastq',
+            f'out={temp_path}/qtrimmed.fastq', 
+            "qtrim=r", f'trimq={config["BBMAP_TRIMQ"]}'
         ], capture_output=True, text=True)
         bbmap_log += ret.stderr + '\n'
         
         ret = subprocess.run([
-            f"{bbmap_path}/bbmerge.sh", 
-            f"in={temp_path}/qtrimmed.fastq",
-            f"out={temp_path}/merged2.fastq",
-            f"ihist={temp_path}/hist2.tsv"
+            f'{bbmap_path}/bbmerge.sh', 
+            f'in={temp_path}/qtrimmed.fastq',
+            f'out={temp_path}/merged2.fastq',
+            f'ihist={temp_path}/hist2.tsv'
         ], capture_output=True, text=True)
         bbmap_log += ret.stderr + '\n'
         
         # Concatenate into first file
-        f1 = open(f"{temp_path}/merged.fastq", 'a+')
-        f2 = open(f"{temp_path}/merged2.fastq", 'r')
+        f1 = open(f'{temp_path}/merged.fastq', 'a+')
+        f2 = open(f'{temp_path}/merged2.fastq', 'r')
         f1.write(f2.read())
         f1.close()
         f2.close()
@@ -159,23 +159,23 @@ def bbmap_process(config):
     # Phase 3 - average bqs filtering
     if config["BBMAP_BQS"] > -1:
         ret = subprocess.run([
-            f"{bbmap_path}/bbduk.sh", 
-            f"in={temp_path}/merged.fastq",
-            f"out={temp_path}/cleaned.fastq", 
+            f'{bbmap_path}/bbduk.sh', 
+            f'in={temp_path}/merged.fastq',
+            f'out={temp_path}/cleaned.fastq', 
             "maq=30"
         ], capture_output=True, text=True)
         bbmap_log += ret.stderr + '\n'
     else:
-        os.rename(f"{temp_path}/merged.fastq", f"{temp_path}/cleaned.fastq")
+        os.rename(f'{temp_path}/merged.fastq', f'{temp_path}/cleaned.fastq')
     
-    save_stats(f"BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec",
+    save_stats('BBmap time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
 
     with open(config["BBLOG"], 'w') as f:
         f.write(bbmap_log)
 
-    assert os.path.isfile(f"{temp_path}/cleaned.fastq")
-    return f"{temp_path}/cleaned.fastq"
+    assert os.path.isfile(f'{temp_path}/cleaned.fastq')
+    return f'{temp_path}/cleaned.fastq'
 
 def is_gz_file(filename):
     """
@@ -280,7 +280,7 @@ def annotateCoords(anno_df):
     if firstExonCoord > 0:
         cdot = int(df.iloc[i]["transcript_bp"])
         for i in range(firstExonCoord, -1, -1):
-            df.loc[i, "HGVScoord"] = f"c.{int(cdot)}{int(i)-int(firstExonCoord)}"
+            df.loc[i, "HGVScoord"] = f'c.{int(cdot)}{int(i)-int(firstExonCoord)}'
     
     # Now annotate first exon
     i = firstExonCoord
@@ -289,7 +289,7 @@ def annotateCoords(anno_df):
         if df.iloc[i]["region"].find("exon") > -1:
             if inIntron:
                 inIntron = False
-            df.loc[i, "HGVScoord"] = f"c.{int(df.iloc[i]['transcript_bp'])}"
+            df.loc[i, "HGVScoord"] = f'c.{int(df.iloc[i]['transcript_bp'])}'
         elif not inIntron:
             inIntron = True
             cdot = int(df.iloc[i-1]['transcript_bp'])
@@ -301,16 +301,16 @@ def annotateCoords(anno_df):
                     nextExonCoord = j
                     break
             # annotate first base of intron
-            df.loc[i, "HGVScoord"] = f"c.{int(cdot)}+{1}"
+            df.loc[i, "HGVScoord"] = f'c.{int(cdot)}+{1}'
         elif nextExonCoord > 0:
             # need to find whether position is closer to donor or acceptor
             if i - lastExonCoord < nextExonCoord - i:
-                df.loc[i, "HGVScoord"] = f"c.{int(cdot)}+{i - lastExonCoord}"
+                df.loc[i, "HGVScoord"] = f'c.{int(cdot)}+{i - lastExonCoord}'
             else:
-                df.loc[i, "HGVScoord"] = f"c.{int(cdot)+1}-{nextExonCoord - i}"
+                df.loc[i, "HGVScoord"] = f'c.{int(cdot)+1}-{nextExonCoord - i}'
         else:
             assert inIntron
-            df.loc[i, "HGVScoord"] = f"c.{int(cdot)}+{i - lastExonCoord}"
+            df.loc[i, "HGVScoord"] = f'c.{int(cdot)}+{i - lastExonCoord}'
         i += 1
 
     return df
@@ -414,10 +414,10 @@ class Mutation(object):
     
     def nameMut(self):
         if self.mutType == "snp":
-            return(f"{self.pos[0]}{self.ins_str}")
+            return(f'{self.pos[0]}{self.ins_str}')
         elif self.pos[0] == self.pos[1]:
-            return(f"{self.pos[0]}{self.mutType}{self.ins_str}")
-        return(f"{self.pos[0]}-{self.pos[1]}{self.mutType}{self.ins_str}")
+            return(f'{self.pos[0]}{self.mutType}{self.ins_str}')
+        return(f'{self.pos[0]}-{self.pos[1]}{self.mutType}{self.ins_str}')
     
     def addComutation(self, mutName, counts):
         if mutName in self.comutations.keys():
@@ -510,7 +510,7 @@ def getHGVS(seq, ref, config, verbose = False):
                 # gap in reference alignment deletion
                 ops.append("del")
                 rSeq.append("")
-                rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}")
+                rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}')
                 nTotIndel += (r_alns[i][1] - r_alns[i+1][0])
             else:
                 pass
@@ -528,17 +528,17 @@ def getHGVS(seq, ref, config, verbose = False):
                         isDup = True
                         ops.append("dup")
                         rSeq.append("")
-                        rC.append(f"{str(r_alns[i][1] - len(insSeq))}-{str(r_alns[i][1] - 1)}")
+                        rC.append(f'{str(r_alns[i][1] - len(insSeq))}-{str(r_alns[i][1] - 1)}')
                 if not isDup:
-                    rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i+1][0]+1)}")
-                    ops.append(f"ins[{len(insSeq)}]")
+                    rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i+1][0]+1)}')
+                    ops.append(f'ins[{len(insSeq)}]')
                     rSeq.append(insSeq)
 
             elif r_alns[i+1][0] > r_alns[i][1]:
                 # delins
                 insSeq = seq[q_alns[i][1]:q_alns[i+1][0]]
-                rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}")
-                ops.append(f"delins[{r_alns[i+1][0] - r_alns[i][1]},{len(insSeq)}]")
+                rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}')
+                ops.append(f'delins[{r_alns[i+1][0] - r_alns[i][1]},{len(insSeq)}]')
                 rSeq.append(insSeq)
                 nTotIndel += len(insSeq) + (r_alns[i+1][0] - r_alns[i][1]) # del + ins
             else:
@@ -547,8 +547,8 @@ def getHGVS(seq, ref, config, verbose = False):
                 # attach duplicated alignment to end of novel insert
                 dupLen = r_alns[i][1] - r_alns[i+1][0]
                 insSeq = seq[q_alns[i][1]:(q_alns[i+1][0] + dupLen)]
-                rC.append(f"{str(r_alns[i][1])}-{str(r_alns[i][1]+1)}")
-                ops.append(f"ins[{len(insSeq)}]")
+                rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i][1]+1)}')
+                ops.append(f'ins[{len(insSeq)}]')
                 rSeq.append(insSeq)
 
     maxFracIsIndel = 0.7
@@ -556,7 +556,7 @@ def getHGVS(seq, ref, config, verbose = False):
         return [],[],[], -1, -1
 
     if verbose:
-        print([f"{c}{o}{s}" for c, o, s in zip(rC, ops, rSeq)])
+        print([f'{c}{o}{s}' for c, o, s in zip(rC, ops, rSeq)])
     
     return rC, ops, rSeq, ref_start, ref_end
 
@@ -725,7 +725,7 @@ def alignITD(prealigns_df, config):
     REF = config["REF"]
     
     start_time = timeit.default_timer()
-    print(f"Processing sample {sampleName}")
+    print(f'Processing sample {sampleName}')
     
     df = prealigns_df.copy(deep=True)
 
@@ -808,9 +808,9 @@ def alignITD(prealigns_df, config):
             if sS == "N":
                 N_List.append(sC)
             else:
-                snp = f"{sC}{sR}>{sS}"
+                snp = f'{sC}{sR}>{sS}'
                 snpNameList.append(snp)
-                snpMut = Mutation("snp", str(sC), f"{sR}>{sS}", seqCount)
+                snpMut = Mutation("snp", str(sC), f'{sR}>{sS}', seqCount)
                 seqMutList.append(snpMut)
         
         # add mutations to main list
@@ -836,7 +836,7 @@ def alignITD(prealigns_df, config):
                     mutList[mutIdx[0]].addComutation(seqMutNames[iii], seqCount)                    
                     
         df.loc[i,"Aligned"] = True
-        df.loc[i, "alignRefCoords"] = f"{startC}-{endC}"
+        df.loc[i, "alignRefCoords"] = f'{startC}-{endC}'
         mutNameList = [m.nameMut() for m in seqMutList]
         df.loc[i, "HGVS"] = ";".join(HGVSMutNames)
         df.loc[i, "SNP"] = ";".join(snpNameList)
@@ -886,7 +886,7 @@ def alignITD(prealigns_df, config):
         cM_dict = {k: v for k, v in sorted(mutList[i].comutations.items(), key=lambda x: x[1], reverse = True)}
         cM_dict_pc = {}
         for k, v in zip(cM_dict.keys(), cM_dict.values()):
-            cM_dict_pc[k] = f"{round(v * 100/ mutCount[i], 2)}%"
+            cM_dict_pc[k] = f'{round(v * 100/ mutCount[i], 2)}%'
         coMuts.append(cM_dict_pc)
 
     dict = {'name': mutName, 'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf, 'coverage': mutNorm, 
@@ -911,7 +911,7 @@ def alignITD(prealigns_df, config):
     summa.to_csv(config["NETINSERT_FILE"], sep = ",", index=False)
     ######################################################################
     
-    print(f"mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec")
+    print(f'mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec')
     print("\n")
     
     return 0
@@ -977,8 +977,8 @@ def parse_config_from_cmdline(config):
     config["BBMAP_BQS"] = cmd_args.min_bqs
     
     assert os.path.isdir(config["BBMAP_PATH"])
-    assert os.path.isfile(f"{config["BBMAP_PATH"]}/bbmerge.sh")
-    assert os.path.isfile(f"{config["BBMAP_PATH"]}/bbduk.sh")
+    assert os.path.isfile(f'{config["BBMAP_PATH"]}/bbmerge.sh')
+    assert os.path.isfile(f'{config["BBMAP_PATH"]}/bbduk.sh')
     
     # config["TECH"] = cmd_args.technology
     # if config["TECH"] == "454":
@@ -1181,7 +1181,7 @@ def main(config):
 
     alignITD(prealigns, config)
 
-    save_stats(f"mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec",
+    save_stats(f'mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
     ### END MERGEITD PIPELINE
 
