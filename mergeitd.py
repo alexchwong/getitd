@@ -860,6 +860,8 @@ def alignITD(prealigns_df, config):
     # Write results
     df.to_csv(config["ALIGN_FILE"], sep = ",", index=False)
     
+    anno = config["ANNO"]
+    
     mutList.sort(key=lambda x: x.counts, reverse=True)
 
     mutName = [m.nameMut() for m in mutList]
