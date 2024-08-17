@@ -915,9 +915,7 @@ def alignITD(prealigns_df, config):
     summa.to_csv(config["NETINSERT_FILE"], sep = ",", index=False)
     ######################################################################
     
-    print(f'mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec')
-    print("\n")
-    
+    save_stats(f'mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec', config["STATS_FILE"])    
     return 0
 
 def parse_config_from_cmdline(config):
@@ -1185,8 +1183,6 @@ def main(config):
 
     alignITD(prealigns, config)
 
-    save_stats(f'mergeITD time taken - {round(timeit.default_timer() - start_time, 2)} sec',
-        config["STATS_FILE"])
     ### END MERGEITD PIPELINE
 
     ########################################
