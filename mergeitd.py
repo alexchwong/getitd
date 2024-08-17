@@ -142,17 +142,17 @@ def bbmap_process(config):
     
     assert numPairs > 0
     pcMerged = round(numMerged * 100 / numPairs, 2)
-    if config["BBMAP_TRIMQ"] > -1:
-        save_stats(f'Phase 1 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
-    else:
-        save_stats(f'Merging {numMerged} of {numPairs} pairs merged ({pcMerged} %)', config["STATS_FILE"])
-        
     tt = round(timeit.default_timer() - start_time, 2)
-    save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
-    
+    if config["BBMAP_TRIMQ"] > -1:
+        save_stats(f'Phase 1 merging {numMerged} of {numPairs} pairs merged ({pcMerged} %) - {tt} sec', config["STATS_FILE"])
+    else:
+        save_stats(f'Merging {numMerged} of {numPairs} pairs merged ({pcMerged} %) - {tt} sec', config["STATS_FILE"])
+        
     bbmap_log += blog + '\n'
     
     # Phase 2 merging
+    numPairs2 = 0
+    numMerged2 = 0
     if config["BBMAP_TRIMQ"] > -1:
         start_time2 = timeit.default_timer()
         ret = subprocess.run([
@@ -179,21 +179,17 @@ def bbmap_process(config):
 
         blog = ret.stderr
         logLines = blog.split('\n')
-        numPairs2 = 0
-        numMerged2 = 0
         for i in range(len(logLines)):
             if logLines[i].find("Pairs:") > -1:
                 numPairs2 = int(logLines[i].split('\t')[1])
             elif logLines[i].find("Joined:") > -1:
-                numMerged = int(logLines[i].split('\t')[1])
+                numMerged2 = int(logLines[i].split('\t')[1])
         
         if numPairs2 > 0:
+            tt = round(timeit.default_timer() - start_time2, 2)
             pcMerged2 = round(numMerged2 * 100 / numPairs2, 2)
-            save_stats(f'Phase 2 merging {numMerged2} of {numPairs2} pairs merged ({pcMerged2} %)', config["STATS_FILE"])
+            save_stats(f'Phase 2 merging {numMerged2} of {numPairs2} pairs merged ({pcMerged2} %) - {tt} sec', config["STATS_FILE"])
             
-        tt = round(timeit.default_timer() - start_time2, 2)
-        save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
-        
         bbmap_log += blog + '\n'
 
 
@@ -204,7 +200,7 @@ def bbmap_process(config):
             f'{bbmap_path}/bbduk.sh', 
             f'in={temp_path}/merged.fastq',
             f'out={temp_path}/cleaned.fastq', 
-            "maq=30"
+            f'maq={config["BBMAP_BQS"]}'
         ], capture_output=True, text=True)
 
         blog = ret.stderr
@@ -222,18 +218,21 @@ def bbmap_process(config):
                 numRetained = int(txtRetained)
         
         assert numInput > 0
+        tt = round(timeit.default_timer() - start_time3, 2)
+
         pcRetained = round(numRetained * 100 / numInput, 2)
-        save_stats(f'BQS filtering retained {numRetained} of {numInput} merged reads ({pcRetained} %)', config["STATS_FILE"])
+        save_stats(f'BQS filtering retained {numRetained} of {numInput} merged reads ({pcRetained} %) - {tt} sec', config["STATS_FILE"])
 
         pcTotal = round(numRetained * 100 / numPairs, 2)
         save_stats(f'BBmap merging final result: {numRetained} of {numPairs} merged reads ({pcTotal} %)', config["STATS_FILE"])
             
-        tt = round(timeit.default_timer() - start_time3, 2)
-        save_stats(f'Time taken {tt} sec', config["STATS_FILE"])
-        
         bbmap_log += blog + '\n'
     else:
         os.rename(f'{temp_path}/merged.fastq', f'{temp_path}/cleaned.fastq')
+        if numMerged2 > 0:
+            numMerged3 = numMerged + numMerged2
+            pcTotal = round(numMerged3 * 100 / numPairs, 2)
+            save_stats(f'BBmap merging final result: {numMerged3} of {numPairs} merged reads ({pcTotal} %)', config["STATS_FILE"])
     
     save_stats(f'BBmap total time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
@@ -969,7 +968,7 @@ def alignITD(prealigns_df, config):
     res_s = res[res["netInsert"] > 5]
     res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", "insertRegion"]]
     
-    res_txt = res_s.head(10).tostring(index_names = False, index = False)
+    res_txt = res_s.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
@@ -981,7 +980,7 @@ def alignITD(prealigns_df, config):
     summa = summa.sort_values(by = 'vaf_percent', ascending = False)
     print("Top insert lengths")
     summa_s = summa[summa["netInsert"] > 5]
-    res_txt = summa_s.head(10).tostring(index_names = False, index = False)
+    res_txt = summa_s.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
