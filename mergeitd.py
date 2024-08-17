@@ -377,51 +377,6 @@ def read_annotation(filename):
         print("\nAnnotation file was not provided or cannot be accessed!\n")
         return None
 
-def get_domains(anno):
-    """
-    Extract start and stop coordinates of annotated domains.
-
-    Args:
-       anno (pd.DataFrame): Annotation supplied by user with one row
-                per reference bp and at least two columns:
-                "region" contains the domain name and
-                "amplicon_bp" the annotated coordinates.
-
-    Returns:
-        List of tuples (domain_name, start_coord, end_coord) where
-        coordinates refer to amplicon bp.
-    """
-    domains = []
-    domain = start = end = None
-    for i,row in anno.iterrows():
-        if domain and domain == row["region"]:
-            end = end + 1
-        else:
-            if domain:
-                domains.append((domain,start,end))
-            domain = row["region"]
-            start = end = row["amplicon_bp"]
-    return domains
-
-def integral_insert_realignment(insert_alignment, insert_length):
-    """
-    Check whether insert realigned without gaps to the reference.
-
-    Inserts are only considered as ITDs if they realign to the reference
-    in one piece (to their respective second tandem).
-
-    Args:
-        insert_alignment (str): Alignment string of insert relative to
-                WT reference, output by bio.align.localcs().
-        insert_length:  Length / number of bp of the insert.
-
-    Returns:
-        bool, True when alignment contains one or more gaps, False otherwise.
-    """
-    insert_idxs = [i for i in range(len(insert_alignment)) if insert_alignment[i] != '-']
-    return insert_idxs[-1] - insert_idxs[0] + 1 == insert_length
-
-
 def ar_to_vaf(ar):
     """
     Convert AR to VAF.
@@ -917,29 +872,40 @@ def plot_coverage(iref_coverage, config):
 def main(config):
 
     # PROCESS INPUTS
-    config["OUT_DIR"] = '_'.join([config["SAMPLE"], "getitd"])
-    config["OUT_NEEDLE"] = 'out_needle'
+    config["OUT_DIR"] = '_'.join([config["SAMPLE"], "mergeitd"])
+    config["TMP_DIR"] = '_'.join([config["SAMPLE"], "mergeitd", "temp_fastq"])
+
     config["OUT_COV_PLOT"] = os.path.join(config["OUT_DIR"], "coverage.png")
     config["OUT_COV_FILE"] = os.path.join(config["OUT_DIR"], "coverage.txt")
     config["STATS_FILE"] = os.path.join(config["OUT_DIR"], "stats.txt")
     config["CONFIG_FILE"] = os.path.join(config["OUT_DIR"], "config.txt")
 
-    config["ALIGN_FILE"] = "aligns.tsv"
+    config["ALIGN_FILE"] = "alignClasses.csv"
+    config["MUTATION_FILE"] = "mutation_vaf.csv"
+    config["NETINSERT_FILE"] = "netInserts_vaf.csv"
+    
     # make all input & output file / folder names absolute paths
-    for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", "STATS_FILE", "CONFIG_FILE", "OUT_COV_FILE", "OUT_COV_PLOT"]:
+    for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", 
+        "OUT_COV_PLOT", "OUT_COV_FILE", "STATS_FILE", "CONFIG_FILE",
+        "ALIGN_FILE", "MUTATION_FILE", "NETINSERT_FILE"
+    ]:
         if config[file_]:
             config[file_] = make_file_path_absolute(config[file_])
 
     config["ANNO"] = read_annotation(config["ANNO_FILE"])
-    config["DOMAINS"] = get_domains(config["ANNO"])
+    # config["DOMAINS"] = get_domains(config["ANNO"])
     config["REF"] = read_reference(config["REF_FILE"]).upper()
-    config["COST_ALIGNED"] = {(c1, c2): get_alignment_score(c1, c2, config) for c1, c2 in itertools.product(["A","T","G","C","Z","N"], repeat=2)}
+    # config["COST_ALIGNED"] = {(c1, c2): get_alignment_score(c1, c2, config) for c1, c2 in itertools.product(["A","T","G","C","Z","N"], repeat=2)}
 
 
     ## CREATE OUTPUT FOLDER
     if not os.path.exists(config["OUT_DIR"]):
         os.makedirs(config["OUT_DIR"])
 
+    ## CREATE TEMP DIRECTORY FOR MERGED FASTQ
+    if not os.path.exists(config["TMP_DIR"]):
+        os.makedirs(config["TMP_DIR"])
+        
     ## CHANGE TO OUTPUT FOLDER
     #  this is required for parallel child processes to retrieve
     #  the correct config.txt file later on despite static / constant filename
@@ -949,205 +915,14 @@ def main(config):
     ## REMOVE OLD STATS & LOG FILE & START CREATING A NEW ONE
     try:
         os.remove(config["STATS_FILE"])
-        os.remove(os.path.join(config["OUT_DIR"], "incomplete-wt-tandem.log"))
+        # os.remove(os.path.join(config["OUT_DIR"], "incomplete-wt-tandem.log"))
     except OSError:
         pass
     save_stats("\n==== PROCESSING SAMPLE {} ====".format(config["SAMPLE"]), config["STATS_FILE"])
 
-    ## READ FASTQ FILES
-    reads = get_reads(config)
-    TOTAL_READS = len(reads)
+    ### NEW MERGEITD PIPELINE
 
-    ## TRIM trailing AMBIGUOUS 'N's
-    reads = [x for x in parallelize(Read.trim_n, reads, config["NKERN"]) if x is not None]
-    save_stats("Number of total reads > {}bp remaining after N-trimming: {} ({} %)".format(config["MIN_READ_LENGTH"], len(reads), round(len(reads) * 100 / TOTAL_READS, 2)), config["STATS_FILE"])
-    if not reads:
-        save_stats("\nNO READS TO PROCESS!", config["STATS_FILE"])
-        save_stats("Consider adjusting `-min_read_length` parameter?\n", config["STATS_FILE"])
-        quit()
-    save_stats("Mean read length after N-trimming: {}".format(round(np.mean([read.length for read in reads]), 2)), config["STATS_FILE"])
-
-    ## FILTER ON BQS
-    if config["MIN_BQS"] > 0:
-        reads = [x for x in parallelize(Read.filter_bqs, reads, config["NKERN"]) if x is not None]
-    save_stats("Number of total reads with mean BQS >= {}: {} ({} %)".format(config["MIN_BQS"], len(reads), round(len(reads) * 100 / TOTAL_READS, 2)), config["STATS_FILE"])
-
-    ## GET UNIQUE READS AND COUNTS THEREOF
-    start_time = timeit.default_timer()
-    reads = get_unique_reads(reads)
-    print("Getting unique reads took {} s\n".format(round(timeit.default_timer() - start_time, 2)))
-    save_stats("Number of unique reads with mean BQS >= {}: {}".format(config["MIN_BQS"],len(reads)), config["STATS_FILE"])
-
-    # FILTER UNIQUE READS
-    # --> keep only those that exist at least twice
-    # --> assumption: if it's not reproducible, it's not (true and clinically relevant)
-    if config["MIN_READ_COPIES"] == 1:
-        save_stats("Turned OFF unique reads filter!", config["STATS_FILE"])
-    else:
-        reads = [read for read in reads if read.counts >= config["MIN_READ_COPIES"] ]
-        save_stats("Number of unique reads with at least {} copies: {}".format(config["MIN_READ_COPIES"],len(reads)), config["STATS_FILE"])
-    save_stats("Total reads remaining for analysis: {} ({} %)".format(sum((read.counts for read in reads)), round(sum((read.counts for read in reads)) * 100 / TOTAL_READS, 2)), config["STATS_FILE"])
-
-    # FILTER READS with too many N's
-    if config["MAX_NS"] > -1:
-        reads = [read for read in reads if read.seq.count('N') <= config["MAX_NS"] ]    
-        save_stats("Number of unique reads with at most {} Ns: {}".format(config["MAX_NS"],len(reads)), config["STATS_FILE"])
-    else:
-        save_stats("Reads with N's allowed, these are not filtered", config["STATS_FILE"])
-
-    ## ALIGN TO REF
-    save_stats("\n-- Aligning to Reference --", config["STATS_FILE"])
-    if config["INFER_SENSE_FROM_ALIGNMENT"]:
-        save_stats("Inferring sense from alignment!", config["STATS_FILE"])
-    start_time = timeit.default_timer()
-    reads = parallelize(Read.align, reads, config["NKERN"])
-    print("Alignment took {} s".format(round(timeit.default_timer() - start_time, 2)))
-
-    # FILTER BASED ON ALIGNMENT SCORE (INCL FAILED ALIGNMENTS WITH read.al_score is None)
-    reads = filter_alignment_score(reads, config)
-
-    # FILTER BASED ON UNALIGNED PRIMERS
-    # --> require that primers are always aligned without gaps / indels
-    # --> do allow mismatches
-    if config["REQUIRE_INDEL_FREE_PRIMERS"]:
-        total_alignments = len(reads)
-        reads = [read for read in reads if read.contains_indel_free_primer(config)]
-        save_stats("Filtering {} / {} alignments with indels in primer bases".format(total_alignments - len(reads), total_alignments), config["STATS_FILE"])
-    else:
-        save_stats("Turned OFF indel-free primer filter!", config["STATS_FILE"])
-
-    # FINAL STATS
-    save_stats("Total reads remaining for analysis: {} ({} %)".format(sum((read.counts for read in reads)), round(sum((read.counts for read in reads)) * 100 / TOTAL_READS, 2)), config["STATS_FILE"])
-
-    # REORDER TRAILING INSERTS TO GUARANTEE REF SEQ MORE TRAILING THAN INSERT SEQ AND CORRECT REF_SPAN
-    reads = parallelize(Read.reorder_trailing_inserts, reads, config["NKERN"])
-    reads = parallelize(Read.get_ref_span, reads, config["NKERN"])
-
-    # PRINT PASSING ALIGNMENTS
-    # create output file directory for alignments print-outs
-    if not os.path.exists(config["OUT_NEEDLE"]):
-        os.makedirs(config["OUT_NEEDLE"])
-
-    # Sort reads based on abundance
-    reads.sort(key=lambda x: x.counts, reverse=True)
-
-    # Heading for alignment summary file
-    with open(config["ALIGN_FILE"], 'w') as the_file:
-        the_file.write("Needle_file\tLength\tCounts\tSequence\n")
-
-    for i,read in enumerate(reads):
-        reads[i].al_file = 'needle_{}.txt'.format(i)
-        reads[i].print_alignment(config)
-
-    if not reads:
-        save_stats("\nNO READS TO PROCESS!", config["STATS_FILE"])
-        quit()
-
-
-    #######################################
-    # CALCULATE COVERAGE
-    # use inter-bp instead of bp coverage!
-    # -> this is what inserts' coverage will be based on,
-    #    so that only those reads are taken into consideration which span across the same reference base as the insert
-    # --> this will differentiate reads that stop ON the preceding WT base pair from those that actually continue beyond it,
-    #     either with an insertion or with the following WT base. For stopping reads we simply do not know whether they would
-    #     support the insertion or not!
-    start_time = timeit.default_timer()
-    iref_coverage_total = dict()
-    iref_coverage_frwd = dict()
-    iref_coverage_rev = dict()
-    iref_coords = np.array(range(len(config["REF"]) -1 +2)) -0.5  #-1 for counting inter-bp spaces instead of bp, +2 for 3' and 5' extension beyond amplicon, -0.5 for inter-bp coords
-    for ref_coord, iref_coord in enumerate(iref_coords):
-        spanning_reads = [read for read in reads if iref_coord >= read.ref_span[0] and iref_coord <= read.ref_span[1]]
-        spanning_reads_index = flatten_list([read.index for read in spanning_reads])
-        iref_coverage_total[iref_coord] = len(set(spanning_reads_index)) #do not count paired mates (which have the same read.index) twice
-        iref_coverage_frwd[iref_coord] = sum([read.counts for read in spanning_reads if read.sense == 1])
-        iref_coverage_rev[iref_coord] = sum([read.counts for read in spanning_reads if read.sense == -1])
-    iref_coverage = {"all_reads": iref_coverage_total, "forward_reads": iref_coverage_frwd, "reverse_reads": iref_coverage_rev}
-    print("Calculating coverage took {} s".format(round(timeit.default_timer() - start_time, 2)))
-
-    save_coverage(iref_coverage, config)
-    if config["PLOT"]:
-        plot_coverage(iref_coverage, config)
-
-    #######################################
-    # COLLECT INSERTS
-    save_stats("\n-- Looking for insertions & ITDs --", config["STATS_FILE"])
-
-    start_time = timeit.default_timer()
-    inserts = [read.get_inserts(config) for read in reads]
-    inserts = flatten_list([insert for insert in inserts if insert is not None])
-    print("Collecting inserts took {} s".format(round(timeit.default_timer() - start_time, 2)))
-    save_stats("{} inserts >= {} bp were found".format(len(inserts), config["MIN_INSERT_SEQ_LENGTH"]), config["STATS_FILE"])
-
-    # filter inserts that are actually adapter sequences
-    # (instead of trimming adapters in advance)
-    start_time = timeit.default_timer()
-    total_inserts = len(inserts)
-    inserts = [insert for insert in inserts if not insert.is_adapter_artefact(config)]
-    save_stats("{}/{} insertions were part of adapters and filtered".format(total_inserts - len(inserts), total_inserts), config["STATS_FILE"])
-    print("Filtering inserts for adapter sequences took {} s".format(round(timeit.default_timer() - start_time, 2)))
-
-    # add coverage to inserts
-    start_time = timeit.default_timer()
-    for insert in inserts:
-        # add coverage
-        # --> be sure to normalize start coord to [0,len(REF)[ first
-        # --> negative start (-> 5' trailing_end) will result in
-        #     coverage = ref_coverage[-X] which will silently report incorrect coverage!!
-        insert = insert.set_sense()
-        insert = insert.set_coverage(iref_coverage)
-        insert = insert.calc_vaf()
-    print("Annotating coverage took {} s".format(round(timeit.default_timer() - start_time, 2)))
-
-
-    #######################################
-    # COLLECT ITDs
-    # --> put this in a method and use parallelize to speed things up!
-    # --> (can I also do that for reads above when there are possibly multiple inserts per read?) -> yes: return [inserts found] per itd, remove None, flatten list
-
-    start_time = timeit.default_timer()
-    itds = [insert.get_itd(config) for insert in inserts]
-    itds = [itd for itd in itds if itd is not None]
-
-    inserts = sorted(inserts, key=Insert.get_seq)
-    itds = sorted(itds, key=Insert.get_seq)
-    print("Collecting ITDs took {} s".format(round(timeit.default_timer() - start_time, 2)))
-    save_stats("{} ITDs were found".format(len(itds)), config["STATS_FILE"])
-
-
-    ########################################
-    # MERGE INSERTS
-    ins_and_itds = {"insertions": inserts, "itds": itds}
-
-    merged_ins_and_itds = {}
-    start_time = timeit.default_timer()
-    for type_, inserts_ in ins_and_itds.items():
-        merged_ins_and_itds[type_] = get_merged_inserts(inserts_, type_, iref_coverage, config)
-    print("Merging took {} s".format(round(timeit.default_timer() - start_time, 2)))
-
-
-    ########################################
-    # FILTER INSERTS
-    filtered_ins_and_itds = {}
-    start_time = timeit.default_timer()
-    for type_, inserts_ in merged_ins_and_itds.items():
-        filtered_ins_and_itds[type_] = get_hc_inserts(inserts_, type_, config, "_collapsed-is-same_is-similar_is-close_is-same_trailing_hc")
-    print("Filtering took {} s".format(round(timeit.default_timer() - start_time, 2)))
-
-
-    ########################################
-    # CHECK FOR INCOMPLETELY COVERED WT READS
-    incomplete_wt_tandem_file = os.path.join(config["OUT_DIR"], "incomplete-wt-tandem.log")
-    if os.path.exists(incomplete_wt_tandem_file):
-        incomplete_wt_tandem_reads = len(open(incomplete_wt_tandem_file).readlines(  ))
-        print("\n----")
-        print("Note: getITD requires the WT tandem to be fully sequenced.")
-        print("This sample contained {} read(s) whose insert mapped partially beyond the covered sequence.".format(incomplete_wt_tandem_reads))
-        print("These inserts were therefore considered likely false positives and not called as ITDs.")
-        print("They were saved to {} for reference,\nincluding the number of occurrences within this sample, the insert sequence and the full read sequence.".format(incomplete_wt_tandem_file))
-        print("Report this warning if you feel a true positive was missed, otherwise safely ignore.\n")
-
+    ### END MERGEITD PIPELINE
 
     ########################################
     # CHANGE BACK TO ORIGINAL / PARENT DIRECTORY
