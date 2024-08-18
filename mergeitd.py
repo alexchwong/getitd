@@ -501,6 +501,15 @@ class Mutation(object):
         elif self.pos[0] == self.pos[1]:
             return(f'{self.pos[0]}{self.mutType}{self.ins_str}')
         return(f'{self.pos[0]}-{self.pos[1]}{self.mutType}{self.ins_str}')
+
+    def nameActualMut(self, config):
+        pos0 = config["ANNO"].iloc[self.pos[0]]["HGVScoord"]
+        if self.mutType == "snp":
+            return(f'{pos0}{self.ins_str}')
+        elif self.pos[0] == self.pos[1]:
+            return(f'{pos0}{self.mutType}{self.ins_str}')
+        pos1 = config["ANNO"].iloc[self.pos[0]]["HGVScoord"]
+        return(f'{pos0}-{pos1}{self.mutType}{self.ins_str}')
     
     def addComutation(self, mutName, counts):
         if mutName in self.comutations.keys():
@@ -825,6 +834,8 @@ def alignITD(prealigns_df, config):
     df["alignRefCoords"] = ""
     df["HGVS"] = ""
     df["SNP"] = ""
+    df["absHGVS"] = ""
+    df["absSNP"] = ""
     df["net_insertSize"] = 0
     df["Ns"] = ""
     # df["idealSequence"] = ""
@@ -887,9 +898,11 @@ def alignITD(prealigns_df, config):
                                 break
 
         HGVSMutNames = [m.nameMut() for m in seqMutList]
+        actualHGVSMutNames = [m.nameActualMut(config) for m in seqMutList]
                                                 
         # Infer SNPs
         snpNameList = []
+        actualSnpNameList = []
         N_List = []
 
         snpCoords, snpRefs, snpSubs = findSNP(seq, REF, HGVSMutNames, config)
@@ -902,6 +915,8 @@ def alignITD(prealigns_df, config):
                 snpNameList.append(snp)
                 snpMut = Mutation("snp", str(sC), f'{sR}>{sS}', seqCount)
                 seqMutList.append(snpMut)
+        
+        actualSnpNameList = [m.nameActualMut(config) for m in seqMutList]
         
         # add mutations to main list
         for ii in range(len(seqMutList)):
@@ -929,7 +944,9 @@ def alignITD(prealigns_df, config):
         df.loc[i, "alignRefCoords"] = f'{startC}-{endC}'
         mutNameList = [m.nameMut() for m in seqMutList]
         df.loc[i, "HGVS"] = ";".join(HGVSMutNames)
+        df.loc[i, "absHGVS"] = ";".join(actualHGVSMutNames)
         df.loc[i, "SNP"] = ";".join(snpNameList)
+        df.loc[i, "absSNP"] = ";".join(actualSnpNameList)
 
         # newSeq = generateMutSeq(REF, mutNameList)
         # df.loc[i, "net_insertSize"] = len(newSeq) - len(REF)
@@ -953,6 +970,7 @@ def alignITD(prealigns_df, config):
     mutList.sort(key=lambda x: x.counts, reverse=True)
 
     mutName = [m.nameMut() for m in mutList]
+    absmutName = [m.nameActualMut(config) for m in mutList]
     mutCount = [m.counts for m in mutList]
     netIns = [m.netInsert() for m in mutList]
 
@@ -993,7 +1011,7 @@ def alignITD(prealigns_df, config):
 
     dict = {'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf,
         'coverage': mutNorm, 'insertPos': insertPos, 'insertRegion' : insertRegion,
-        'name': mutName, 'co_mutations' : coMuts} 
+        'name': mutName, 'HGVS': absmutName, 'co_mutations' : coMuts} 
     res = pd.DataFrame(dict)
     res.to_csv(config["MUTATION_FILE"], sep = ",", index=False)
 
@@ -1006,11 +1024,11 @@ def alignITD(prealigns_df, config):
     res_s = res_s[res_s["vaf_percent"] >= config["MIN_VAF"]]
     
     res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", 
-        "insertRegion", "coverage", "name", "co_mutations"]]
+        "insertRegion", "coverage", "name", "HGVS", "co_mutations"]]
     res_s.to_csv(config["MUTATION_FILE_FILTERED"], sep = ",", index=False)
     
     res_s2 = res_s[["netInsert", "counts", "vaf_percent", "insertPos",
-        "insertRegion", "coverage", "name"]]
+        "insertRegion", "coverage", "HGVS"]]
     res_txt = res_s2.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
