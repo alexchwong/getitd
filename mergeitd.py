@@ -508,7 +508,7 @@ class Mutation(object):
             return(f'{pos0}{self.ins_str}')
         elif self.pos[0] == self.pos[1]:
             return(f'{pos0}{self.mutType}{self.ins_str}')
-        pos1 = config["ANNO"].iloc[self.pos[0]]["HGVScoord"]
+        pos1 = config["ANNO"].iloc[self.pos[1]]["HGVScoord"]
         return(f'{pos0}-{pos1}{self.mutType}{self.ins_str}')
     
     def addComutation(self, mutName, counts):
@@ -847,7 +847,12 @@ def alignITD(prealigns_df, config):
     mutList = []
     mutNames = []
 
-    for i in tqdm(range(len(df))):
+    if config["PROGRESSBAR"]:
+        opt_range = tqdm(range)
+    else
+        opt_range = range
+
+    for i in opt_range(len(df)):
         seq = df.iloc[i]["Sequence"]
         rC_S, ops_S, rSeq, startC, endC = getHGVS(seq, REF, config)
         if startC == -1 or endC == -1:
@@ -1075,6 +1080,8 @@ def parse_config_from_cmdline(config):
     parser.add_argument("-anno", help="WT amplicon sequence annotation (default ./anno/amplicon_kayser.tsv)", default="./anno/amplicon_kayser.tsv", type=str)
     
     parser.add_argument("-plot_coverage", help="If True, plot read coverage across the reference to 'coverage.png' in the respective output folder (default False)", default=False, type=str_to_bool)
+
+    parser.add_argument("-progress_bar", help="If True, displays progress bar when aligning unique fragment sequences", default=True, type=str_to_bool)
     
     # Not used
     parser.add_argument('-nkern', help="number of cores to use for parallel tasks (default 12)", default="12", type=int)
@@ -1120,6 +1127,7 @@ def parse_config_from_cmdline(config):
     # else:
         # config["INFER_SENSE_FROM_ALIGNMENT"] = cmd_args.infer_sense_from_alignment
     config["PLOT"] = cmd_args.plot_coverage
+    config["PROGRESSBAR"] = cmd_args.progress_bar
 
     # R2 reads are reverse-complemented prior to alignment to the WT reference sequence
     # --> reverse-complement any sequence later to be found within reverse-complemented R2 reads
@@ -1328,7 +1336,7 @@ def main(config):
     for i in range(len(prealigns)):
         prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
 
-    save_stats(f'Aligning - {len(prealigns)} unique reads - {filteredReads} of {totalReads} ({pcReads} %)', config["STATS_FILE"])        
+    save_stats(f'Aligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
     ### END MERGEITD PIPELINE
