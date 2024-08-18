@@ -1303,6 +1303,9 @@ def main(config):
     prealigns = prealigns.sort_values(by = "Counts", ascending = False).reset_index(drop = True)
     prealigns = prealigns[prealigns["Counts"] >= config["MIN_READ_COPIES"]]
 
+    # debug
+    print(prealigns[["Counts", "avgBQS"]].head())
+
     ### MEASURE SEQUENCE LENGTH
     prealigns["SeqLength"] = 0
     for i in range(len(prealigns)):
