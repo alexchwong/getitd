@@ -541,7 +541,7 @@ def getHGVS(seq, ref, config, verbose = False):
     
     Hardcoded parameters (for now)
     - minAlignLen (6): number of consecutive nucleotides required for a block alignment
-    - minRefAlignFraction (0.4): min fraction of merged read that aligns to reference
+    - minRefAlignFraction (0.4): min fraction of reference aligned by read
     - maxFracIsIndel (0.7): max fraction of merged read that is part of in/del (i.e. not aligned to reference)
     """
     
@@ -1071,13 +1071,12 @@ def parse_config_from_cmdline(config):
     
     # getHGVS() parameters
     parser.add_argument('-minAlignLen', help="minimum number of nucleotides that must be aligned in a block alignment (default 6)", default="6", type=int)
-    parser.add_argument('-minRefAlignFraction', help="min fraction of reference amplicon that must be aligned to the given merged read sequence (default 0.4)", default="0.4", type=float)
+    parser.add_argument('-minRefAlignFraction', help="min fraction of reference that must be aligned by the read (default 0.4)", default="0.4", type=float)
     parser.add_argument('-maxFracIsIndel', help="max fraction of merged read that is allowed to be part of in/del -i.e. not aligned to reference. (default 0.7)", default="0.7", type=float)
-
 
     # bbmerge parameters
     parser.add_argument('-trimq_merging', help="Whether to attempt to merge reads a second time by first 3'-trimming reads by quality score cutoff prior (default = 20). -1 to disable", default="20", type=int)
-    parser.add_argument("-min_bqs", help="minimum average base quality score (BQS) required by each read (default 30). -1 to disable", type=int, default=30)
+    parser.add_argument("-min_bqs", help="minimum average base quality score (BQS) required by each read (default 25). -1 to disable", type=int, default=25)
 
     parser.add_argument('-min_read_copies', help="minimum number of copies of each read required for processing (1 to turn filter off, 2 (default) to discard unique reads)", default="2", type=int)
     parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered by getITD. For non-trailing ITDs, this is the minimum insert length; for trailing ITDs, it is the minimum number of bp of a potentially longer ITD which have to be sequenced (default 6).", default="6", type=int)
