@@ -1099,7 +1099,7 @@ def parse_config_from_cmdline(config):
     # parser.add_argument("-max_seq_Ns", help="maximum number of N's before these are filtered prior to alignment", type=int, default=-1)
 
     parser.add_argument('-filter_ins_total_reads', help="minimum number of total reads required to support an insertion for it to be considered (default 1)", default="1", type=int)
-    parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF%) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
+    parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF percent) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
     cmd_args = parser.parse_args()
 
     config["R1"] = cmd_args.fastq1
@@ -1328,7 +1328,7 @@ def main(config):
     for i in range(len(prealigns)):
         prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
 
-    save_stats(f'Aligning - {len(df)} unique reads - {filteredReads} of {totalReads} ({pcReads} %)', config["STATS_FILE"])        
+    save_stats(f'Aligning - {len(prealigns)} unique reads - {filteredReads} of {totalReads} ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
     ### END MERGEITD PIPELINE
