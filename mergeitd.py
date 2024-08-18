@@ -938,10 +938,20 @@ def alignITD(prealigns_df, config):
 
     totCov = []
     incCov = 0
+    iref_coverage_total = {}, {}, {}
     for i in range(len(covIncrement)):
         incCov += covIncrement[i]
         totCov.append(incCov)
-
+        iref_coverage_total[i] = incCov
+        iref_coverage_frwd[i] = 0
+        iref_coverage_rev[i] = 0
+    iref_coverage = {"all_reads": iref_coverage_total, 
+        "forward_reads": iref_coverage_frwd, 
+        "reverse_reads": iref_coverage_rev}
+    save_coverage(iref_coverage, config)
+    if config["PLOT"]:
+        plot_coverage(iref_coverage, config)
+    
     insertPos = []
     insertRegion = []
     mutNorm = []
@@ -961,25 +971,35 @@ def alignITD(prealigns_df, config):
             cM_dict_pc[k] = f'{round(v * 100/ mutCount[i], 2)}%'
         coMuts.append(cM_dict_pc)
 
-    dict = {'name': mutName, 'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf, 'coverage': mutNorm, 
-            'insertPos': insertPos, 'insertRegion' : insertRegion, 'co_mutations' : coMuts} 
+    dict = {'netInsert': netIns, 'counts': mutCount, 'vaf_percent': mutVaf,
+        'coverage': mutNorm, 'insertPos': insertPos, 'insertRegion' : insertRegion,
+        'name': mutName, 'co_mutations' : coMuts} 
     res = pd.DataFrame(dict)
-    print("Top inserts")
-    res_s = res[res["netInsert"] > 5]
-    res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", "insertRegion"]]
+    res.to_csv(config["MUTATION_FILE"], sep = ",", index=False)
+
+    save_stats("\nTop inserts", config["STATS_FILE"])    
     
-    res_txt = res_s.head(10).to_string(index_names = False, index = False)
+    # Filtered inserts
+    res_s = res[res["netInsert"] >= config["MIN_INSERT_SEQ_LENGTH"]]
+    res_s = res[res["counts"] >= config["MIN_TOTAL_READS"]]
+    res_s = res[res["vaf_percent"] >= config["MIN_VAF"]]
+    
+    res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", 
+        "insertRegion", "coverage", "name", "co_mutations"]]
+    res_s.to_csv(config["MUTATION_FILE_FILTERED"], sep = ",", index=False)
+    
+    res_s2 = res_s[["netInsert", "counts", "vaf_percent", "insertPos",
+        "insertRegion", "coverage", "name"]]
+    res_txt = res_s2.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
     # Write results    
-    res.to_csv(config["MUTATION_FILE"], sep = ",", index=False)
     ######################################################################
 
-    summa = res.groupby(["netInsert"])[["vaf_percent", "counts"]].sum().reset_index()
+    summa = res_s.groupby(["netInsert"])[["vaf_percent", "counts"]].sum().reset_index()
     summa = summa.sort_values(by = 'vaf_percent', ascending = False)
-    print("Top insert lengths")
-    summa_s = summa[summa["netInsert"] > 5]
+    save_stats("\nTop insert lengths", config["STATS_FILE"])    
     res_txt = summa_s.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
@@ -1035,7 +1055,7 @@ def parse_config_from_cmdline(config):
     parser.add_argument('-min_read_copies', help="minimum number of copies of each read required for processing (1 to turn filter off, 2 (default) to discard unique reads)", default="2", type=int)
     parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered by getITD. For non-trailing ITDs, this is the minimum insert length; for trailing ITDs, it is the minimum number of bp of a potentially longer ITD which have to be sequenced (default 6).", default="6", type=int)
     # parser.add_argument("-max_seq_Ns", help="maximum number of N's before these are filtered prior to alignment", type=int, default=-1)
-    parser.add_argument('-filter_ins_unique_reads', help="minimum number of unique reads required to support an insertion for it to be considered 'high confidence' (default 2)", default="2", type=int)
+
     parser.add_argument('-filter_ins_total_reads', help="minimum number of total reads required to support an insertion for it to be considered 'high confidence' (default 1)", default="1", type=int)
     parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
     cmd_args = parser.parse_args()
@@ -1048,14 +1068,10 @@ def parse_config_from_cmdline(config):
     config["REF_FILE"] = cmd_args.reference
     config["ANNO_FILE"] = cmd_args.anno
     
-    config["BBMAP_PATH"] = make_file_path_absolute(cmd_args.bbmap)
+    config["BBMAP_PATH"] = cmd_args.bbmap
     config["BBMAP_TRIMQ"] = cmd_args.trimq_merging
     config["BBMAP_BQS"] = cmd_args.min_bqs
-    
-    assert os.path.isdir(config["BBMAP_PATH"])
-    assert os.path.isfile(f'{config["BBMAP_PATH"]}/bbmerge.sh')
-    assert os.path.isfile(f'{config["BBMAP_PATH"]}/bbduk.sh')
-    
+        
     # config["TECH"] = cmd_args.technology
     # if config["TECH"] == "454":
         # config["INFER_SENSE_FROM_ALIGNMENT"] = True
@@ -1089,7 +1105,6 @@ def parse_config_from_cmdline(config):
     # config["MAX_TRAILING_BP"] = cmd_args.max_trailing_bp
 
     config["MIN_TOTAL_READS"] = cmd_args.filter_ins_total_reads
-    config["MIN_UNIQUE_READS"] = cmd_args.filter_ins_unique_reads
     config["MIN_VAF"] = cmd_args.filter_ins_vaf
 
     return config
@@ -1184,12 +1199,14 @@ def main(config):
     config["BBLOG"] = os.path.join(config["OUT_DIR"], "bbmap.log")
     config["ALIGN_FILE"] = os.path.join(config["OUT_DIR"], "alignClasses.csv")
     config["MUTATION_FILE"] = os.path.join(config["OUT_DIR"], "mutation_vaf.csv")
+    config["MUTATION_FILE_FILTERED"] = os.path.join(config["OUT_DIR"], "filtered_mut_vaf.csv")
     config["NETINSERT_FILE"] = os.path.join(config["OUT_DIR"], "netInserts_vaf.csv")
     
     # make all input & output file / folder names absolute paths
-    for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", "OUT_DIR", 
+    for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", 
+        "OUT_DIR", "TMP_DIR", "BBMAP_PATH"
         "OUT_COV_PLOT", "OUT_COV_FILE", "STATS_FILE", "CONFIG_FILE",
-        "BBLOG", "ALIGN_FILE", "MUTATION_FILE", "NETINSERT_FILE"
+        "BBLOG", "ALIGN_FILE", "MUTATION_FILE", "MUTATION_FILE_FILTERED", "NETINSERT_FILE"
     ]:
         if config[file_]:
             config[file_] = make_file_path_absolute(config[file_])
