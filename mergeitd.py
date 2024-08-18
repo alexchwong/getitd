@@ -188,7 +188,10 @@ def bbmap_process(config):
         if numPairs2 > 0:
             tt = round(timeit.default_timer() - start_time2, 2)
             pcMerged2 = round(numMerged2 * 100 / numPairs2, 2)
-            save_stats(f'Phase 2 merging {numMerged2} of {numPairs2} pairs merged ({pcMerged2} %) - {tt} sec', config["STATS_FILE"])
+            pcMergedT2 = round(numMerged2 * 100 / numPairs, 2)
+            save_stats(f'Phase 2 merging {numMerged2} of {numPairs2} pairs merged ({pcMerged2} % of unmerged, {pcMergedT2} % of total) - {tt} sec', config["STATS_FILE"])
+        else:
+            save_stats("Phase 2 merging not performed due to zero reads available", config["STATS_FILE"])
             
         bbmap_log += blog + '\n'
 
