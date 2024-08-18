@@ -1209,7 +1209,7 @@ def main(config):
     
     # make all input & output file / folder names absolute paths
     for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", 
-        "OUT_DIR", "TMP_DIR", "BBMAP_PATH"
+        "OUT_DIR", "TMP_DIR", "BBMAP_PATH",
         "OUT_COV_PLOT", "OUT_COV_FILE", "STATS_FILE", "CONFIG_FILE",
         "BBLOG", "ALIGN_FILE", "MUTATION_FILE", "MUTATION_FILE_FILTERED", "NETINSERT_FILE"
     ]:
