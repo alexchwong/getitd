@@ -1071,7 +1071,7 @@ def parse_config_from_cmdline(config):
     
     # getHGVS() parameters
     parser.add_argument('-minAlignLen', help="minimum number of nucleotides that must be aligned in a block alignment (default 6)", default="6", type=int)
-    parser.add_argument('-minRefAlignFraction', help="min fraction of merged read that must align to the reference (default 0.4)", default="0.4", type=float)
+    parser.add_argument('-minRefAlignFraction', help="min fraction of reference amplicon that must be aligned to the given merged read sequence (default 0.4)", default="0.4", type=float)
     parser.add_argument('-maxFracIsIndel', help="max fraction of merged read that is allowed to be part of in/del -i.e. not aligned to reference. (default 0.7)", default="0.7", type=float)
 
 
@@ -1292,8 +1292,10 @@ def main(config):
     
     ### GET UNIQUE READS
     # unique_reads = Counter(reads)
-    prealigns = reads.groupby("Sequence")["BQS"].agg(('Counts', 'size'), ('avgBQS', 'mean')).reset_index()
-
+    gb = reads.groupby(['Sequence'])
+    prealigns = gb.size().to_frame(name='Counts')
+    prealigns = prealigns.join(gb.agg({'BQS': 'mean'}).rename(columns={'BQS': 'avgBQS'}))
+    
     ### MAKE PANDAS DF OF UNIQUE READS AND COUNTS
     # prealigns = pd.DataFrame({
         # "Sequence": list(Counter(unique_reads).keys()),
