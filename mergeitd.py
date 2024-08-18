@@ -1310,7 +1310,7 @@ def main(config):
     for i in range(len(prealigns)):
         prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
 
-    save_stats(f'Aligning - {len(df)} unique reads {filteredReads} of {totalReads} ({pcReads} %)', config["STATS_FILE"])        
+    save_stats(f'Aligning - {len(df)} unique reads - {filteredReads} of {totalReads} ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
     ### END MERGEITD PIPELINE
