@@ -625,7 +625,7 @@ def getHGVS(seq, ref, config, verbose = False):
                         isDup = True
                         ops.append("dup")
                         rSeq.append("")
-                        rC.append(f'{str(r_alns[i][1] - len(insSeq))}-{str(r_alns[i][1] - 1)}')
+                        rC.append(f'{str(r_alns[i][1] - len(insSeq))}_{str(r_alns[i][1] - 1)}')
                 if not isDup:
                     rC.append(f'{str(r_alns[i][1])}_{str(r_alns[i+1][0]+1)}')
                     ops.append(f'ins[{len(insSeq)}]')
