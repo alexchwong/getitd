@@ -268,6 +268,7 @@ def read_fastq(fastq_file):
         List of Read() objects.
     """
     reads = [] # simple list of fastq sequences
+    readbqs = []
     try:
         if is_gz_file(fastq_file):
             open_fct = gzip.open
@@ -280,13 +281,29 @@ def read_fastq(fastq_file):
                 _ = line
                 read_seq = f.readline().rstrip(os.linesep)
                 _ = f.readline()
-                _ = f.readline().rstrip(os.linesep)
+                read_bqs = f.readline().rstrip(os.linesep)
                 reads.append(read_seq)
+                readbqs.append(average_bqs(read_bqs))
+                
                 line = f.readline()
     except IOError as e:
         print(f'---\nCould not read fastq file {fastq_file}!\n---')
     
-    return reads
+    return reads, readbqs
+
+def average_bqs(bqs):
+    """
+    Calculate the mean BQS of a given string of quality scores.
+    Assumes BQS are in Sanger format, encoded as Phred +33.
+
+    Args:
+        bqs (str): String of base quality scores.
+
+    Returns:
+        Mean BQS of that string.
+    """
+    return sum([ord(x) - 33 for x in bqs]) / len(bqs)
+
 
 def read_reference(filename):
     """
@@ -1269,16 +1286,20 @@ def main(config):
     cleaned_fastq = bbmap_process(config)
     
     ### READS MERGED & CLEANED FASTQ READS
-    reads = read_fastq(cleaned_fastq)
-
+    readseq, readbqs = read_fastq(cleaned_fastq)
+    read_dict = {'Sequence' : readseq, 'BQS' : readbqs}
+    reads = pd.DataFrame(read_dict)
+    
     ### GET UNIQUE READS
-    unique_reads = Counter(reads)
+    # unique_reads = Counter(reads)
+    prealigns = reads.groupby("Sequence")["BQS"].agg(('Counts', 'size'), ('avgBQS', 'mean')).reset_index()
 
     ### MAKE PANDAS DF OF UNIQUE READS AND COUNTS
-    prealigns = pd.DataFrame({
-        "Sequence": list(Counter(unique_reads).keys()),
-        "Counts" : list(Counter(unique_reads).values())
-    })
+    # prealigns = pd.DataFrame({
+        # "Sequence": list(Counter(unique_reads).keys()),
+        # "Counts" : list(Counter(unique_reads).values())
+    # })
+    
     prealigns = prealigns.sort_values(by = "Counts", ascending = False).reset_index(drop = True)
     prealigns = prealigns[prealigns["Counts"] >= config["MIN_READ_COPIES"]]
 
