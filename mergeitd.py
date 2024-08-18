@@ -541,7 +541,7 @@ def getHGVS(seq, ref, config, verbose = False):
         
     coords = aln[-1].coordinates
     # print(coords)
-    minAlignLen = 6
+    minAlignLen = config["MIN_ALIGN_LEN"]
     for j in range(len(coords[0]) - 1):
         if coords[0][j+1] - coords[0][j] >= minAlignLen and coords[1][j+1] - coords[1][j] >= minAlignLen:
             # if match must be a block of at least minAlignLen
@@ -559,7 +559,7 @@ def getHGVS(seq, ref, config, verbose = False):
     ref_start, ref_end = r_alns[0][0], r_alns[-1][1]
 
     # Insufficient alignment to reference
-    minRefAlignFraction = 0.4
+    minRefAlignFraction = config["MIN_REF_ALN_FRACTION"]
     if (ref_end - ref_start) < minRefAlignFraction * len(ref):
         return [],[],[], -1, -1                
     
@@ -622,7 +622,7 @@ def getHGVS(seq, ref, config, verbose = False):
                 ops.append(f'ins[{len(insSeq)}]')
                 rSeq.append(insSeq)
 
-    maxFracIsIndel = 0.7
+    maxFracIsIndel = config["MAX_FRAC_INDEL"]
     if (nTotIndel + ref_end - ref_start) * maxFracIsIndel < nTotIndel:
         return [],[],[], -1, -1
 
@@ -985,9 +985,10 @@ def alignITD(prealigns_df, config):
     save_stats("\nTop inserts", config["STATS_FILE"])    
     
     # Filtered inserts
-    res_s = res[res["netInsert"] >= config["MIN_INSERT_SEQ_LENGTH"]]
-    res_s = res[res["counts"] >= config["MIN_TOTAL_READS"]]
-    res_s = res[res["vaf_percent"] >= config["MIN_VAF"]]
+    res_s = res.copy(deep=True)
+    res_s = res_s[res_s["netInsert"] >= config["MIN_INSERT_SEQ_LENGTH"]]
+    res_s = res_s[res_s["counts"] >= config["MIN_TOTAL_READS"]]
+    res_s = res_s[res_s["vaf_percent"] >= config["MIN_VAF"]]
     
     res_s = res_s[["netInsert", "counts", "vaf_percent", "insertPos", 
         "insertRegion", "coverage", "name", "co_mutations"]]
@@ -1005,7 +1006,7 @@ def alignITD(prealigns_df, config):
     summa = res_s.groupby(["netInsert"])[["vaf_percent", "counts"]].sum().reset_index()
     summa = summa.sort_values(by = 'vaf_percent', ascending = False)
     save_stats("\nTop insert lengths", config["STATS_FILE"])    
-    res_txt = summa_s.head(10).to_string(index_names = False, index = False)
+    res_txt = summa.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
     
     ######################################################################
@@ -1028,35 +1029,39 @@ def parse_config_from_cmdline(config):
         Filled config dict
     """
     parser = argparse.ArgumentParser()
+    
+    # Required parameters
     parser.add_argument("sampleID", help="sample ID used as output folder prefix (REQUIRED)")
     parser.add_argument("fastq1", help="FASTQ file (optionally gzipped) of forward reads (REQUIRED)")
-    parser.add_argument("fastq2", help="FASTQ file (optionally gzipped) of reverse reads (optional)", nargs="?")
+    parser.add_argument("fastq2", help="FASTQ file (optionally gzipped) of reverse reads (REQUIRED)")
+    
+    # BBmap path
     parser.add_argument("-bbmap", help="Path to bbmap directory (default ~/bin/bbmap)", default="~/bin/bbmap", type=str)
 
     parser.add_argument("-reference", help="WT amplicon sequence as reference for read alignment (default ./anno/amplicon.txt)", default="./anno/amplicon.txt", type=str)
     parser.add_argument("-anno", help="WT amplicon sequence annotation (default ./anno/amplicon_kayser.tsv)", default="./anno/amplicon_kayser.tsv", type=str)
-    # parser.add_argument("-forward_primer", help="Forward primer gene-specific sequence(s) as present at the 5' end of supplied forward reads. Separate by space when supplying more than one (default GCAATTTAGGTATGAAAGCCAGCTAC)", default=["GCAATTTAGGTATGAAAGCCAGCTAC"], type=str, nargs="+")
-    # parser.add_argument("-reverse_primer", help="Reverse primer gene-specific sequence(s) as present at the 5' end of supplied reverse reads. Separate by space when supplying more than one (default CTTTCAGCATTTTGACGGCAACC)", default=["CTTTCAGCATTTTGACGGCAACC"], type=str, nargs="+")
-    # parser.add_argument("-require_indel_free_primers", help="If True, discard i) reads containing insertions or deletions within the primer sequence and ii) reads not containing any primer sequence. Set to False if these have been trimmed (default True)", default=True, type=str_to_bool)
-    # parser.add_argument("-forward_adapter", help="Sequencing adapter of the forward reads' primer as (potentially) present at the 5' end of the supplied forward reads, 5' of the gene-specific primer sequence (default TCGTCGGCAGCGTCAGATGTGTATAAGAGACAGA)", default="TCGTCGGCAGCGTCAGATGTGTATAAGAGACAGA", type=str)
-    # parser.add_argument("-reverse_adapter", help="Sequencing adapter of the reverse reads' primer as (potentially) present at the 5' end of the supplied reverse reads, 5' of the gene-specific primer sequence (default GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAGA)", default="GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAGA", type=str)
+    
     parser.add_argument("-plot_coverage", help="If True, plot read coverage across the reference to 'coverage.png' in the respective output folder (default False)", default=False, type=str_to_bool)
-    # parser.add_argument("-technology", help="Sequencing technology used, options are '454' or 'Illumina' (default). '454' sets -infer_sense_from_alignment to True and -min_read_copies to 1, regardless of the respective command line options used; 'Illumina' will instead use these command line options or their respective defaults.", default="Illumina", type=str, choices=['Illumina', '454'])
-    # parser.add_argument("-infer_sense_from_alignment", help="If True, infer each read's sense by aligning it as a forward and reverse read and keeping the better alignment (default False).", default=False, type=str_to_bool)
+    
+    # Not used
     parser.add_argument('-nkern', help="number of cores to use for parallel tasks (default 12)", default="12", type=int)
-    parser.add_argument('-gap_open', help="alignment cost of gap opening (default -36)", default="-36", type=int)
-    parser.add_argument('-gap_extend', help="alignment cost of gap extension (default -0.5)", default="-0.5", type=float)
+    
+    # Alignment parameters
     parser.add_argument('-match', help="alignment cost of base match (default 5)", default="5", type=int)
     parser.add_argument('-mismatch', help="alignment cost of base mismatch (default -15)", default="-15", type=int)
+    parser.add_argument('-gap_open', help="alignment cost of gap opening (default -36)", default="-36", type=int)
+    parser.add_argument('-gap_extend', help="alignment cost of gap extension (default -0.5)", default="-0.5", type=float)
+    
+    # getHGVS() parameters
+    parser.add_argument('-minAlignLen', help="minimum number of nucleotides that must be aligned in a block alignment (default 6)", default="6", type=int)
+    parser.add_argument('-minRefAlignFraction', help="min fraction of merged read that must align to the reference (default 0.4)", default="0.4", type=float)
+    parser.add_argument('-maxFracIsIndel', help="max fraction of merged read that is allowed to be part of in/del -i.e. not aligned to reference. (default 0.7)", default="0.7", type=float)
+
 
     # bbmerge parameters
     parser.add_argument('-trimq_merging', help="Whether to attempt to merge reads a second time by first 3'-trimming reads by quality score cutoff prior (default = 20). -1 to disable", default="20", type=int)
-
-    # parser.add_argument('-max_trailing_bp', help="maximum number of aligned bp between the start / end of an insertion and the start / end of the read to consider the insertion 'trailing'. Trailing insertions are not required to be in-frame and will be considered ITDs even if the matching WT tandem is not directly adjacent. Set this to 0 to disable (default 0).", default="0", type=int)
-    # parser.add_argument('-minscore_inserts', help="fraction of max possible alignment score required for ITD detection and insert collapsing (default 0.5)", default="0.5", type=float)
-    # parser.add_argument('-minscore_alignments', help="fraction of max possible alignment score required for a read to pass when aligning reads to amplicon reference (default 0.4)", default="0.4", type=float)
     parser.add_argument("-min_bqs", help="minimum average base quality score (BQS) required by each read (default 30). -1 to disable", type=int, default=30)
-    # parser.add_argument('-min_read_length', help="minimum read length in bp required after N-trimming (default 100)", default="100", type=int)
+
     parser.add_argument('-min_read_copies', help="minimum number of copies of each read required for processing (1 to turn filter off, 2 (default) to discard unique reads)", default="2", type=int)
     parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered by getITD. For non-trailing ITDs, this is the minimum insert length; for trailing ITDs, it is the minimum number of bp of a potentially longer ITD which have to be sequenced (default 6).", default="6", type=int)
     # parser.add_argument("-max_seq_Ns", help="maximum number of N's before these are filtered prior to alignment", type=int, default=-1)
@@ -1095,6 +1100,11 @@ def parse_config_from_cmdline(config):
     config["COST_MISMATCH"] = -abs(cmd_args.mismatch)
     config["COST_GAPOPEN"] = -abs(cmd_args.gap_open)
     config["COST_GAPEXTEND"] = -abs(cmd_args.gap_extend)
+
+    config["MIN_ALIGN_LEN"] = cmd_args.minAlignLen
+    config["MIN_REF_ALN_FRACTION"] = cmd_args.minRefAlignFraction
+    config["MAX_FRAC_INDEL"] = cmd_args.maxFracIsIndel
+
     # config["MIN_SCORE_INSERTS"] = cmd_args.minscore_inserts
     # config["MIN_SCORE_ALIGNMENTS"] = cmd_args.minscore_alignments
 
