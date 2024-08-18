@@ -836,8 +836,6 @@ def alignITD(prealigns_df, config):
     mutList = []
     mutNames = []
 
-    save_stats(f'Aligning - {len(df)} reads', config["STATS_FILE"])    
-
     for i in tqdm(range(len(df))):
         seq = df.iloc[i]["Sequence"]
         rC_S, ops_S, rSeq, startC, endC = getHGVS(seq, REF, config)
@@ -1079,11 +1077,11 @@ def parse_config_from_cmdline(config):
     parser.add_argument("-min_bqs", help="minimum average base quality score (BQS) required by each read (default 25). -1 to disable", type=int, default=25)
 
     parser.add_argument('-min_read_copies', help="minimum number of copies of each read required for processing (1 to turn filter off, 2 (default) to discard unique reads)", default="2", type=int)
-    parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered by getITD. For non-trailing ITDs, this is the minimum insert length; for trailing ITDs, it is the minimum number of bp of a potentially longer ITD which have to be sequenced (default 6).", default="6", type=int)
+    parser.add_argument('-min_insert_seq_length', help="minimum number of insert basepairs which must be sequenced of each insert for it to be considered (default 6).", default="6", type=int)
     # parser.add_argument("-max_seq_Ns", help="maximum number of N's before these are filtered prior to alignment", type=int, default=-1)
 
-    parser.add_argument('-filter_ins_total_reads', help="minimum number of total reads required to support an insertion for it to be considered 'high confidence' (default 1)", default="1", type=int)
-    parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
+    parser.add_argument('-filter_ins_total_reads', help="minimum number of total reads required to support an insertion for it to be considered (default 1)", default="1", type=int)
+    parser.add_argument('-filter_ins_vaf', help="minimum variant allele frequency (VAF%) required for an insertion to be considered 'high confidence' (default 0.006)", default="0.006", type=float)
     cmd_args = parser.parse_args()
 
     config["R1"] = cmd_args.fastq1
@@ -1300,15 +1298,19 @@ def main(config):
         "Sequence": list(Counter(unique_reads).keys()),
         "Counts" : list(Counter(unique_reads).values())
     })
+    totalReads = prealigns["Counts"].sum()
     
     prealigns = prealigns.sort_values(by = "Counts", ascending = False).reset_index(drop = True)
     prealigns = prealigns[prealigns["Counts"] >= config["MIN_READ_COPIES"]]
+    filteredReads = prealigns["Counts"].sum()
+    pcReads = round(filteredReads * 100 / totalReads, 2)
 
     ### MEASURE SEQUENCE LENGTH
     prealigns["SeqLength"] = 0
     for i in range(len(prealigns)):
         prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
 
+    save_stats(f'Aligning - {len(df)} unique reads {filteredReads} of {totalReads} ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
     ### END MERGEITD PIPELINE
