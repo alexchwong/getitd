@@ -363,7 +363,7 @@ def annotateCoords(anno_df):
     if firstExonCoord > 0:
         cdot = int(df.iloc[i]["transcript_bp"])
         for i in range(firstExonCoord, -1, -1):
-            df.loc[i, "HGVScoord"] = f'c.{int(cdot)}{int(i)-int(firstExonCoord)}'
+            df.loc[i, "HGVScoord"] = f'{int(cdot)}{int(i)-int(firstExonCoord)}'
     
     # Now annotate first exon
     i = firstExonCoord
@@ -372,7 +372,7 @@ def annotateCoords(anno_df):
         if df.iloc[i]["region"].find("exon") > -1:
             if inIntron:
                 inIntron = False
-            df.loc[i, "HGVScoord"] = f'c.{int(df.iloc[i]["transcript_bp"])}'
+            df.loc[i, "HGVScoord"] = f'{int(df.iloc[i]["transcript_bp"])}'
         elif not inIntron:
             inIntron = True
             cdot = int(df.iloc[i-1]["transcript_bp"])
@@ -384,16 +384,16 @@ def annotateCoords(anno_df):
                     nextExonCoord = j
                     break
             # annotate first base of intron
-            df.loc[i, "HGVScoord"] = f'c.{int(cdot)}+{1}'
+            df.loc[i, "HGVScoord"] = f'{int(cdot)}+{1}'
         elif nextExonCoord > 0:
             # need to find whether position is closer to donor or acceptor
             if i - lastExonCoord < nextExonCoord - i:
-                df.loc[i, "HGVScoord"] = f'c.{int(cdot)}+{i - lastExonCoord}'
+                df.loc[i, "HGVScoord"] = f'{int(cdot)}+{i - lastExonCoord}'
             else:
-                df.loc[i, "HGVScoord"] = f'c.{int(cdot)+1}-{nextExonCoord - i}'
+                df.loc[i, "HGVScoord"] = f'{int(cdot)+1}-{nextExonCoord - i}'
         else:
             assert inIntron
-            df.loc[i, "HGVScoord"] = f'c.{int(cdot)}+{i - lastExonCoord}'
+            df.loc[i, "HGVScoord"] = f'{int(cdot)}+{i - lastExonCoord}'
         i += 1
 
     return df
@@ -505,11 +505,11 @@ class Mutation(object):
     def nameActualMut(self, config):
         pos0 = config["ANNO"].iloc[self.pos[0]]["HGVScoord"]
         if self.mutType == "snp":
-            return(f'{pos0}{self.ins_str}')
+            return(f'c.{pos0}{self.ins_str}')
         elif self.pos[0] == self.pos[1]:
-            return(f'{pos0}{self.mutType}{self.ins_str}')
+            return(f'c.{pos0}{self.mutType}{self.ins_str}')
         pos1 = config["ANNO"].iloc[self.pos[1]]["HGVScoord"]
-        return(f'{pos0}-{pos1}{self.mutType}{self.ins_str}')
+        return(f'c.{pos0}-{pos1}{self.mutType}{self.ins_str}')
     
     def addComutation(self, mutName, counts):
         if mutName in self.comutations.keys():
