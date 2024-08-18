@@ -849,7 +849,7 @@ def alignITD(prealigns_df, config):
 
     if config["PROGRESSBAR"]:
         opt_range = tqdm(range)
-    else
+    else:
         opt_range = range
 
     for i in opt_range(len(df)):
