@@ -281,9 +281,9 @@ def read_fastq(fastq_file):
                 _ = line
                 read_seq = f.readline().rstrip(os.linesep)
                 _ = f.readline()
-                read_bqs = f.readline().rstrip(os.linesep)
+                _ = f.readline().rstrip(os.linesep)
                 reads.append(read_seq)
-                readbqs.append(average_bqs(read_bqs))
+                # readbqs.append(average_bqs(read_bqs))
                 
                 line = f.readline()
     except IOError as e:
@@ -1286,27 +1286,24 @@ def main(config):
     cleaned_fastq = bbmap_process(config)
     
     ### READS MERGED & CLEANED FASTQ READS
-    readseq, readbqs = read_fastq(cleaned_fastq)
-    read_dict = {'Sequence' : readseq, 'BQS' : readbqs}
-    reads = pd.DataFrame(read_dict)
+    readseq, _ = read_fastq(cleaned_fastq)
+    # read_dict = {'Sequence' : readseq, 'BQS' : readbqs}
+    # reads = pd.DataFrame(read_dict)
     
     ### GET UNIQUE READS
-    # unique_reads = Counter(reads)
-    gb = reads.groupby(['Sequence'])
-    prealigns = gb.size().to_frame(name='Counts')
-    prealigns = prealigns.join(gb.agg({'BQS': 'mean'}).rename(columns={'BQS': 'avgBQS'}))
+    unique_reads = Counter(readseq)
+    # gb = reads.groupby(['Sequence'])
+    # prealigns = gb.size().to_frame(name='Counts')
+    # prealigns = prealigns.join(gb.agg({'BQS': 'mean'}).rename(columns={'BQS': 'avgBQS'}))
     
     ### MAKE PANDAS DF OF UNIQUE READS AND COUNTS
-    # prealigns = pd.DataFrame({
-        # "Sequence": list(Counter(unique_reads).keys()),
-        # "Counts" : list(Counter(unique_reads).values())
-    # })
+    prealigns = pd.DataFrame({
+        "Sequence": list(Counter(unique_reads).keys()),
+        "Counts" : list(Counter(unique_reads).values())
+    })
     
     prealigns = prealigns.sort_values(by = "Counts", ascending = False).reset_index(drop = True)
     prealigns = prealigns[prealigns["Counts"] >= config["MIN_READ_COPIES"]]
-
-    # debug
-    print(prealigns[["Counts", "avgBQS"]].head())
 
     ### MEASURE SEQUENCE LENGTH
     prealigns["SeqLength"] = 0
