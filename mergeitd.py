@@ -521,6 +521,11 @@ def getHGVS(seq, ref, config, verbose = False):
     Aligns a sequence with respect to the reference
     - returns 3 lists: coordinates, operations, insert sequence
     - Also returns start / end coordinates of alignment (-1 if not aligned)
+    
+    Hardcoded parameters (for now)
+    - minAlignLen (6): number of consecutive nucleotides required for a block alignment
+    - minRefAlignFraction (0.4): min fraction of merged read that aligns to reference
+    - maxFracIsIndel (0.7): max fraction of merged read that is part of in/del (i.e. not aligned to reference)
     """
     
     q_alns = []
@@ -539,7 +544,7 @@ def getHGVS(seq, ref, config, verbose = False):
     minAlignLen = 6
     for j in range(len(coords[0]) - 1):
         if coords[0][j+1] - coords[0][j] >= minAlignLen and coords[1][j+1] - coords[1][j] >= minAlignLen:
-            # if match must be a block of at least 6
+            # if match must be a block of at least minAlignLen
             q_alns.append(coords[0][j:j+2])
             r_alns.append(coords[1][j:j+2])
             
