@@ -484,7 +484,7 @@ class Mutation(object):
         
         self.mutType = mutType
         assert pos_str is not None
-        self.pos = [int(i) for i in pos_str.split("-")]
+        self.pos = [int(i) for i in pos_str.split("_")]
         if len(self.pos) == 1:
             self.pos.append(self.pos[0])
         self.ins_str = ins_str
@@ -500,7 +500,7 @@ class Mutation(object):
             return(f'{self.pos[0]}{self.ins_str}')
         elif self.pos[0] == self.pos[1]:
             return(f'{self.pos[0]}{self.mutType}{self.ins_str}')
-        return(f'{self.pos[0]}-{self.pos[1]}{self.mutType}{self.ins_str}')
+        return(f'{self.pos[0]}_{self.pos[1]}{self.mutType}{self.ins_str}')
 
     def nameActualMut(self, config):
         pos0 = config["ANNO"].iloc[self.pos[0]]["HGVScoord"]
@@ -509,7 +509,7 @@ class Mutation(object):
         elif self.pos[0] == self.pos[1]:
             return(f'c.{pos0}{self.mutType}{self.ins_str}')
         pos1 = config["ANNO"].iloc[self.pos[1]]["HGVScoord"]
-        return(f'c.{pos0}-{pos1}{self.mutType}{self.ins_str}')
+        return(f'c.{pos0}_{pos1}{self.mutType}{self.ins_str}')
     
     def addComutation(self, mutName, counts):
         if mutName in self.comutations.keys():
@@ -607,7 +607,7 @@ def getHGVS(seq, ref, config, verbose = False):
                 # gap in reference alignment deletion
                 ops.append("del")
                 rSeq.append("")
-                rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}')
+                rC.append(f'{str(r_alns[i][1])}_{str(r_alns[i+1][0]-1)}')
                 nTotIndel += (r_alns[i][1] - r_alns[i+1][0])
             else:
                 pass
@@ -627,14 +627,14 @@ def getHGVS(seq, ref, config, verbose = False):
                         rSeq.append("")
                         rC.append(f'{str(r_alns[i][1] - len(insSeq))}-{str(r_alns[i][1] - 1)}')
                 if not isDup:
-                    rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i+1][0]+1)}')
+                    rC.append(f'{str(r_alns[i][1])}_{str(r_alns[i+1][0]+1)}')
                     ops.append(f'ins[{len(insSeq)}]')
                     rSeq.append(insSeq)
 
             elif r_alns[i+1][0] > r_alns[i][1]:
                 # delins
                 insSeq = seq[q_alns[i][1]:q_alns[i+1][0]]
-                rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i+1][0]-1)}')
+                rC.append(f'{str(r_alns[i][1])}_{str(r_alns[i+1][0]-1)}')
                 ops.append(f'delins[{r_alns[i+1][0] - r_alns[i][1]},{len(insSeq)}]')
                 rSeq.append(insSeq)
                 nTotIndel += len(insSeq) + (r_alns[i+1][0] - r_alns[i][1]) # del + ins
@@ -644,7 +644,7 @@ def getHGVS(seq, ref, config, verbose = False):
                 # attach duplicated alignment to end of novel insert
                 dupLen = r_alns[i][1] - r_alns[i+1][0]
                 insSeq = seq[q_alns[i][1]:(q_alns[i+1][0] + dupLen)]
-                rC.append(f'{str(r_alns[i][1])}-{str(r_alns[i][1]+1)}')
+                rC.append(f'{str(r_alns[i][1])}_{str(r_alns[i][1]+1)}')
                 ops.append(f'ins[{len(insSeq)}]')
                 rSeq.append(insSeq)
 
@@ -677,8 +677,8 @@ def generateMutSeq(ref, hgvs, returnComplex = False):
             seq = hg[mutStart+6:]
             if seq.find("]") > -1:
                 seq = seq.split("]")[1]
-            if pos.find("-") > 0:
-                posStart, posEnd = pos.split("-")
+            if pos.find("_") > 0:
+                posStart, posEnd = pos.split("_")
                 posStart = int(posStart)
                 posEnd = int(posEnd) + 1
             else:
@@ -690,8 +690,8 @@ def generateMutSeq(ref, hgvs, returnComplex = False):
             seq = hg[mutStart+3:]
             if seq.find("]") > -1:
                 seq = seq.split("]")[1]
-            if pos.find("-") > 0:
-                posStart, posEnd = pos.split("-")
+            if pos.find("_") > 0:
+                posStart, posEnd = pos.split("_")
                 posStart = int(posStart)
                 posEnd = int(posEnd) - 1
             else:
@@ -700,8 +700,8 @@ def generateMutSeq(ref, hgvs, returnComplex = False):
         elif hg.find("del") > -1:
             mutStart = hg.find("del")
             pos = hg[0:mutStart]
-            if pos.find("-") > 0:
-                posStart, posEnd = pos.split("-")
+            if pos.find("_") > 0:
+                posStart, posEnd = pos.split("_")
                 posStart = int(posStart)
                 posEnd = int(posEnd) + 1
             else:
@@ -710,8 +710,8 @@ def generateMutSeq(ref, hgvs, returnComplex = False):
         elif hg.find("dup") > -1:
             mutStart = hg.find("dup")
             pos = hg[0:mutStart]
-            if pos.find("-") > 0:
-                posStart, posEnd = pos.split("-")
+            if pos.find("_") > 0:
+                posStart, posEnd = pos.split("_")
                 posStart = int(posStart)
                 posEnd = int(posEnd) + 1
             else:
