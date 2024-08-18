@@ -943,7 +943,7 @@ def alignITD(prealigns_df, config):
 
     totCov = []
     incCov = 0
-    iref_coverage_total = {}, {}, {}
+    iref_coverage_total, iref_coverage_frwd, iref_coverage_rev = {}, {}, {}
     for i in range(len(covIncrement)):
         incCov += covIncrement[i]
         totCov.append(incCov)
