@@ -18,7 +18,7 @@ import gzip
 import timeit
 import shutil
 
-from tqdm import tqdm
+from tqdm import trange
 from collections import Counter
 from Bio import Align
 
@@ -851,7 +851,7 @@ def alignITD(prealigns_df, config):
     mutNames = []
 
     if config["PROGRESSBAR"]:
-        opt_range = tqdm(range)
+        opt_range = trange
     else:
         opt_range = range
 
