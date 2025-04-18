@@ -1085,6 +1085,9 @@ def parse_config_from_cmdline(config):
     parser.add_argument("-plot_coverage", help="If True, plot read coverage across the reference to 'coverage.png' in the respective output folder (default False)", default=False, type=str_to_bool)
 
     parser.add_argument("-progress_bar", help="If True, displays progress bar when aligning unique fragment sequences", default=True, type=str_to_bool)
+
+    parser.add_argument("-save_tmp", help="If True, do not remove temporary path after analysis", default=False, type=str_to_bool)
+
     
     # Not used
     parser.add_argument('-nkern', help="number of cores to use for parallel tasks (default 12)", default="12", type=int)
@@ -1131,6 +1134,7 @@ def parse_config_from_cmdline(config):
         # config["INFER_SENSE_FROM_ALIGNMENT"] = cmd_args.infer_sense_from_alignment
     config["PLOT"] = cmd_args.plot_coverage
     config["PROGRESSBAR"] = cmd_args.progress_bar
+    config["SAVE_TMP"] = cmd_args.save_tmp
 
     # R2 reads are reverse-complemented prior to alignment to the WT reference sequence
     # --> reverse-complement any sequence later to be found within reverse-complemented R2 reads
@@ -1348,7 +1352,8 @@ def main(config):
     # CHANGE BACK TO ORIGINAL / PARENT DIRECTORY
     # os.chdir("..")
 
-    shutil.rmtree(config["TMP_DIR"])
+    if not config["SAVE_TMP"]:
+        shutil.rmtree(config["TMP_DIR"])
 
 ########## MAIN ####################
 if __name__ == '__main__':
