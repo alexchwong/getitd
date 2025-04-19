@@ -1274,7 +1274,7 @@ def main(config):
     config["MUTATION_FILE"] = os.path.join(config["OUT_DIR"], "mutation_vaf.csv")
     config["MUTATION_FILE_FILTERED"] = os.path.join(config["OUT_DIR"], "filtered_mut_vaf.csv")
     config["NETINSERT_FILE"] = os.path.join(config["OUT_DIR"], "netInserts_vaf.csv")
-    config["OME_FILE"] = os.path.join(config["OUT_DIR"], f'{[config["SAMPLE"]}_ampliconome.fa')
+    config["OME_FILE"] = os.path.join(config["OUT_DIR"], f'{config["SAMPLE"]}_ampliconome.fa')
     
     # make all input & output file / folder names absolute paths
     for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", 
