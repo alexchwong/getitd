@@ -1039,6 +1039,17 @@ def alignITD(prealigns_df, config):
         "insertRegion", "coverage", "HGVS"]]
     res_txt = res_s2.head(10).to_string(index_names = False, index = False)
     save_stats(res_txt, config["STATS_FILE"])    
+
+    # Amplicon-ome
+    with open(config["OME_FILE"], 'w') as f:
+        f.write(f'>Wild-type\n')
+        f.write(f'{config["REF"]}\n')
+        
+    # Write each insert
+    with open(config["OME_FILE"], 'a') as f:
+        for ins_name, ins_counts in zip(res_s.name, res_s.counts):
+            f.write(f'>{ins_name}|counts={ins_counts}\n')
+            f.write(f'{generateMutSeq(config["REF"], [ins_name])}\n')
     
     ######################################################################
     # Write results    
@@ -1263,6 +1274,7 @@ def main(config):
     config["MUTATION_FILE"] = os.path.join(config["OUT_DIR"], "mutation_vaf.csv")
     config["MUTATION_FILE_FILTERED"] = os.path.join(config["OUT_DIR"], "filtered_mut_vaf.csv")
     config["NETINSERT_FILE"] = os.path.join(config["OUT_DIR"], "netInserts_vaf.csv")
+    config["OME_FILE"] = os.path.join(config["OUT_DIR"], f"{[config["SAMPLE"]}_ampliconome.fa")
     
     # make all input & output file / folder names absolute paths
     for file_ in ["R1", "R2", "REF_FILE", "ANNO_FILE", 
