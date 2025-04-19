@@ -1042,13 +1042,13 @@ def alignITD(prealigns_df, config):
 
     # Amplicon-ome
     with open(config["OME_FILE"], 'w') as f:
-        f.write(f'>Wild-type\n')
+        f.write(f'>WildType\n')
         f.write(f'{config["REF"]}\n')
         
     # Write each insert
     with open(config["OME_FILE"], 'a') as f:
-        for ins_name, ins_counts in zip(res_s.name, res_s.counts):
-            f.write(f'>{ins_name}|counts={ins_counts}\n')
+        for i, ins_name in enumerate(res_s.name):
+            f.write(f'>mutation_{i}\n')
             f.write(f'{generateMutSeq(config["REF"], [ins_name])}\n')
     
     ######################################################################
