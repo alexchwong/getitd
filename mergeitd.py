@@ -842,7 +842,7 @@ def generate_bam(config):
         f'ref={samplePath}/{sampleName}_ampliconome.fa',
         f'out={initBam}',
         "maxindel=2", "strictmaxindel=t",
-        "minaveragequality=25",
+        f'minaveragequality={config["BBMAP_BQS"]}',
         "nodisk", "bs=bs.sh"
     ], capture_output=True, text=True)
     ret2 = subprocess.run(["sh", "bs.sh"])
@@ -906,7 +906,7 @@ def generate_bam(config):
         'Length': amplicon_lens, 'Reads Aligned': amplicon_aligns,
         'VAF%': vafs}
     res = pd.DataFrame(dict)
-    res.to_csv(f'{samplePath}/{sampleName}_aligned_stats.csv, sep = ",", index=False)
+    res.to_csv(f'{samplePath}/{sampleName}_aligned_stats.csv', sep = ",", index=False)
     os.remove(f'{samplePath}/idxstats.txt')
     
     return(0)
