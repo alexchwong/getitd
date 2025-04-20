@@ -890,6 +890,25 @@ def generate_bam(config):
         p = subprocess.Popen(["samtools", "idxstats", sortedCleanedBam], stdout=log)
         p_status = p.wait()
     
+    # clean final idxstats
+    idx = pd.read_csv(f'{samplePath}/idxstats.txt', sep = '\t', header = None)
+    amplicon_names= idx.loc[:-1, 0].tolist()
+    amplicon_lens = idx.loc[:-1, 1].tolist()    
+    amplicon_aligns = idx.loc[:-1, 2].tolist()    
+    sum_aligned = sum([int(i) for i in amplicon_aligns])
+    vafs = [i * 100 / sum_aligned for i in amplicon_aligns]
+    
+    res_s = pd.read_csv(config["MUTATION_FILE_FILTERED"])
+    mut_names = res_s["name"]
+    mut_names.insert(0, "Wild-Type")
+    
+    dict = {'Amplicon': mut_names, 'Alias': amplicon_names,
+        'Length': amplicon_lens, 'Reads Aligned': amplicon_aligns,
+        'VAF%': vafs}
+    res = pd.DataFrame(dict)
+    res.to_csv(f'{samplePath}/{sampleName}_aligned_stats.csv, sep = ",", index=False)
+    os.remove(f'{samplePath}/idxstats.txt')
+    
     return(0)
     
 
