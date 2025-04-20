@@ -823,6 +823,76 @@ def findSNP(seq, ref, delins_hgvs, config):
 
     return realCoords, realRefs, realSubs
 
+def generate_bam(config):
+    sampleName = config["SAMPLE"]
+    samplePath = config["OUT_DIR"]
+    initBam = f"{samplePath}/{sampleName}.bam"
+    sortedInitBam = f"{samplePath}/{sampleName}_sorted.bam"
+    cleanedBam = f"{samplePath}/{sampleName}_cleaned.bam"
+    sortedCleanedBam = f"{samplePath}/{sampleName}_cleaned_sorted.bam"
+    tmpSam = f"{samplePath}/tmp.sam"
+    bbmap_path = config["BBMAP_PATH"]
+    
+    assert os.path.isdir(bbmap_path)
+    assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
+    
+    ret = subprocess.run([
+        f'{bbmap_path}/bbmap.sh', 
+        f'in={config["R1"]}', f'in2={config["R2"]}',
+        f'ref={samplePath}/{sampleName}_ampliconome.fa',
+        f'out={initBam}',
+        "maxindel=2", "strictmaxindel=t",
+        "minaveragequality=25",
+        "nodisk", "bs=bs.sh"
+    ], capture_output=True, text=True)
+    ret2 = subprocess.run(["sh", "bs.sh"])
+    os.remove("bs.sh")
+    
+    # filter reads by fragment length > amplicon length minus max unaligned
+    maxUnaligned = config["BAM_UNALIGNED"]
+    with open(f'{samplePath}/idxstats.txt', 'w') as log:
+        p = subprocess.Popen(["samtools", "idxstats", sortedInitBam], stdout=log)
+        p_status = p.wait()
+
+    idx = pd.read_csv(f'{samplePath}/idxstats.txt', sep = '\t', header = None)
+    amplicon_names= idx.loc[:, 0].tolist()
+    amplicon_lens = idx.loc[:, 1].tolist()    
+    
+    with open(tmpSam, 'w') as tmp:
+        p = subprocess.Popen(["samtools", "view", "-H", sortedInitBam], stdout=tmp)
+        p_status = p.wait()
+
+    printAll = "{print $0}"
+    for i in range(len(amplicon_names) - 1):
+        fLen = amplicon_lens[i] - maxUnaligned
+        with open(tmpSam, 'a') as tmp:
+            ps = subprocess.Popen(["samtools", "view", sortedInitBam, amplicon_names[i]], stdout=subprocess.PIPE)
+            ps2 = subprocess.Popen(["awk", "-F\t", f"(($9 >= {fLen}) || ($9 <= -{fLen})) {printAll}"], stdin = ps.stdout, stdout = tmp)
+            p_status = ps2.wait()
+
+    with open(cleanedBam, 'w') as bam:
+        pb = subprocess.Popen(["samtools", "view", "-b", tmpSam], stdout = bam)
+        p_status = pb.wait()
+
+    with open(sortedCleanedBam, 'w') as bam:
+        pb = subprocess.Popen(["samtools", "sort", cleanedBam], stdout = bam)
+        p_status = pb.wait()
+
+    ret = subprocess.run(["samtools", "index", sortedCleanedBam])
+
+    os.remove(initBam)
+    os.remove(sortedInitBam)
+    os.remove(f"{sortedInitBam}.bai")
+    os.remove(cleanedBam)
+    os.remove(tmpSam)    
+    
+    with open(f'{samplePath}/idxstats.txt', 'w') as log:
+        p = subprocess.Popen(["samtools", "idxstats", sortedCleanedBam], stdout=log)
+        p_status = p.wait()
+    
+    return(0)
+    
+
 def alignITD(prealigns_df, config):
     REF = config["REF"]
     aligner2 = config["ALIGNER"]
@@ -1099,6 +1169,10 @@ def parse_config_from_cmdline(config):
 
     parser.add_argument("-save_tmp", help="If True, do not remove temporary path after analysis", default=False, type=str_to_bool)
 
+    # BBMap alignment BAM
+    parser.add_argument("-generate_bam", help="If True, uses BBmap to generate a sorted, cleaned BAM file", default=False, type=str_to_bool)
+    
+    parser.add_argument('-bam_align_strictness', help="max number of bases of reference amplicon unaligned, lower is more strict (default 20)", default="20", type=int)
     
     # Not used
     parser.add_argument('-nkern', help="number of cores to use for parallel tasks (default 12)", default="12", type=int)
@@ -1146,6 +1220,9 @@ def parse_config_from_cmdline(config):
     config["PLOT"] = cmd_args.plot_coverage
     config["PROGRESSBAR"] = cmd_args.progress_bar
     config["SAVE_TMP"] = cmd_args.save_tmp
+
+    config["GEN_BAM"] = cmd_args.generate_bam
+    config["BAM_UNALIGNED"] = cmd_args.bam_align_strictness
 
     # R2 reads are reverse-complemented prior to alignment to the WT reference sequence
     # --> reverse-complement any sequence later to be found within reverse-complemented R2 reads
@@ -1357,6 +1434,9 @@ def main(config):
 
     save_stats(f'Aligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
+
+    if config["GEN_BAM"]:
+        generate_bam(config)
 
     ### END MERGEITD PIPELINE
 
