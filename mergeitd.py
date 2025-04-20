@@ -245,9 +245,9 @@ def bbmap_process(config):
 
     # write a gzip version of merged fastq file
     assert os.path.isfile(f'{temp_path}/cleaned.fastq')
+    subprocess.run(["gzip", f'{temp_path}/cleaned.fastq'])
     out_gzip_file = os.path.join(config["OUT_DIR"], "cleaned.fastq.gz")
-    with open(f'{temp_path}/cleaned.fastq', 'rb') as f_in, gzip.open(out_gzip_file, 'wb') as f_out:
-        f_out.writelines(f_in)
+    shutil.move(f'{temp_path}/cleaned.fastq.gz', out_gzip_file)
     
     shutil.rmtree(config["TMP_DIR"])
     return out_gzip_file
