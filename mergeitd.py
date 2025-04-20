@@ -236,6 +236,13 @@ def bbmap_process(config):
             numMerged3 = numMerged + numMerged2
             pcTotal = round(numMerged3 * 100 / numPairs, 2)
             save_stats(f'BBmap merging final result: {numMerged3} of {numPairs} merged reads ({pcTotal} %)', config["STATS_FILE"])
+
+    # write a gzip version of merged fastq file
+    assert os.path.isfile(f'{temp_path}/cleaned.fastq')
+    ret = subprocess.run(["gzip", f'{temp_path}/cleaned.fastq'])
+    out_gzip_file = os.path.join(config["OUT_DIR"], "cleaned.fastq.gz")
+    shutil.move(f'{temp_path}/cleaned.fastq.gz', out_gzip_file)    
+    shutil.rmtree(config["TMP_DIR"])
     
     save_stats(f'BBmap total time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
@@ -243,13 +250,6 @@ def bbmap_process(config):
     with open(config["BBLOG"], 'w') as f:
         f.write(bbmap_log)
 
-    # write a gzip version of merged fastq file
-    assert os.path.isfile(f'{temp_path}/cleaned.fastq')
-    ret = subprocess.run(["gzip", f'{temp_path}/cleaned.fastq'])
-    out_gzip_file = os.path.join(config["OUT_DIR"], "cleaned.fastq.gz")
-    shutil.move(f'{temp_path}/cleaned.fastq.gz', out_gzip_file)
-    
-    shutil.rmtree(config["TMP_DIR"])
     return out_gzip_file
 
 def is_gz_file(filename):
@@ -843,6 +843,7 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
     assert in1 is not None
 
     start_time = timeit.default_timer()
+    save_stats(f'\nUsing BBMap to align {OutPrefix}, config["STATS_FILE"])
     
     # Get sequences names and lengths from ampliconome
     ampliconome = config["OME_FILE"]
@@ -1494,7 +1495,7 @@ def main(config):
 
     if config["GEN_BAM"]:
         generate_bam(config, "PairedEnd", config["R1"], config["R2"])
-        generate_bam(config, "Merged", cleaned_fastq)
+        # generate_bam(config, "Merged", cleaned_fastq)
 
     if not config["SAVE_MERGED"] and os.path.isfile(cleaned_fastq):
         os.remove(cleaned_fastq)
