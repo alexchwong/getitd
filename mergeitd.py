@@ -843,7 +843,7 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
     assert in1 is not None
 
     start_time = timeit.default_timer()
-    save_stats(f'\nUsing BBMap to align {OutPrefix}', config["STATS_FILE"])
+    save_stats(f'\nUsing BBMap to align {outPrefix}', config["STATS_FILE"])
     
     # Get sequences names and lengths from ampliconome
     ampliconome = config["OME_FILE"]
