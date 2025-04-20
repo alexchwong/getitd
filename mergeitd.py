@@ -880,7 +880,7 @@ def generate_bam(config):
                 stdout = tmp)
             p_status = ps2.wait()
 
-    os.remove(initBam)
+    os.remove(initSam)
     with open(cleanedBam, 'w') as bam:
         pb = subprocess.Popen(["samtools", "view", "-b", tmpSam], stdout = bam)
         p_status = pb.wait()
@@ -1461,6 +1461,9 @@ def main(config):
     save_stats(f'Aligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
+    if not config["SAVE_TMP"]:
+        shutil.rmtree(config["TMP_DIR"])
+
     if config["GEN_BAM"]:
         generate_bam(config)
 
@@ -1469,9 +1472,6 @@ def main(config):
     ########################################
     # CHANGE BACK TO ORIGINAL / PARENT DIRECTORY
     # os.chdir("..")
-
-    if not config["SAVE_TMP"]:
-        shutil.rmtree(config["TMP_DIR"])
 
 ########## MAIN ####################
 if __name__ == '__main__':
