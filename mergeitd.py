@@ -244,7 +244,16 @@ def bbmap_process(config):
         f.write(bbmap_log)
 
     assert os.path.isfile(f'{temp_path}/cleaned.fastq')
-    return f'{temp_path}/cleaned.fastq'
+    out_gzip_file = os.path.join(config["OUT_DIR"], "cleaned.fastq.gz")
+    # write a gzip version of merged fastq file
+    f_in = open(f'{temp_path}/cleaned.fastq')
+    f_out = gzip.open(out_gzip_file, 'wb')
+    f_out.writelines(f_in)
+    f_out.close()
+    f_in.close()
+    
+    shutil.rmtree(config["TMP_DIR"])
+    return out_gzip_file
 
 def is_gz_file(filename):
     """
@@ -823,17 +832,18 @@ def findSNP(seq, ref, delins_hgvs, config):
 
     return realCoords, realRefs, realSubs
 
-def generate_bam(config):
+def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
     sampleName = config["SAMPLE"]
     samplePath = config["OUT_DIR"]
-    initSam = f"{samplePath}/{sampleName}.sam"
-    cleanedBam = f"{samplePath}/{sampleName}_cleaned.bam"
-    sortedCleanedBam = f"{samplePath}/{sampleName}_cleaned_sorted.bam"
+    initSam = f"{samplePath}/{outPrefix}.sam"
+    cleanedBam = f"{samplePath}/{outPrefix}_cleaned.bam"
+    sortedCleanedBam = f"{samplePath}/{outPrefix}_cleaned_sorted.bam"
     tmpSam = f"{samplePath}/tmp.sam"
     bbmap_path = config["BBMAP_PATH"]
     
     assert os.path.isdir(bbmap_path)
     assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
+    assert in1 is not None
 
     start_time = timeit.default_timer()
     
@@ -859,18 +869,30 @@ def generate_bam(config):
     amp_names.append(header)
     amp_lens.append(length)    
     
-    ret = subprocess.run([
-        f'{bbmap_path}/bbmap.sh', 
-        f'in={config["R1"]}', f'in2={config["R2"]}',
-        f'ref={samplePath}/{sampleName}_ampliconome.fa',
-        f'out={initSam}',
-        "maxindel=2", "strictmaxindel=t",
-        f'minaveragequality={config["BBMAP_BQS"]}',
-        "nodisk"
-    ], capture_output=True, text=True)
+    if in2 is None:
+        ret = subprocess.run([
+            f'{bbmap_path}/bbmap.sh', 
+            f'in={in1}', # f'in2={in2}',
+            f'ref={samplePath}/{sampleName}_ampliconome.fa',
+            f'out={initSam}',
+            "maxindel=2", "strictmaxindel=t",
+            f'minaveragequality={config["BBMAP_BQS"]}',
+            "nodisk"
+        ], capture_output=True, text=True)
+    
+    else:    
+        ret = subprocess.run([
+            f'{bbmap_path}/bbmap.sh', 
+            f'in={in1}', f'in2={in2}',
+            f'ref={samplePath}/{sampleName}_ampliconome.fa',
+            f'out={initSam}',
+            "maxindel=2", "strictmaxindel=t",
+            f'minaveragequality={config["BBMAP_BQS"]}',
+            "nodisk"
+        ], capture_output=True, text=True)
 
     tt = round(timeit.default_timer() - start_time, 2)
-    save_stats(f'BBMap initial alignment completed - {tt} sec', config["STATS_FILE"])
+    save_stats(f'BBMap {outPrefix} initial alignment completed - {tt} sec', config["STATS_FILE"])
     
     start_time2 = timeit.default_timer()
     # filter reads by fragment length > amplicon length minus max unaligned
@@ -903,7 +925,7 @@ def generate_bam(config):
     ret = subprocess.run(["samtools", "index", sortedCleanedBam])
 
     tt = round(timeit.default_timer() - start_time2, 2)
-    save_stats(f'Alignment fidelity filter complete - {tt} sec', config["STATS_FILE"])
+    save_stats(f'{outPrefix} Alignment fidelity filter complete - {tt} sec', config["STATS_FILE"])
     
     with open(f'{samplePath}/idxstats.txt', 'w') as log:
         p = subprocess.Popen(["samtools", "idxstats", sortedCleanedBam], stdout=log)
@@ -925,7 +947,7 @@ def generate_bam(config):
         'Length': amplicon_lens, 'Reads Aligned': amplicon_aligns,
         'VAF%': vafs}
     res = pd.DataFrame(dict)
-    res.to_csv(f'{samplePath}/{sampleName}_aligned_stats.csv', sep = ",", index=False)
+    res.to_csv(f'{samplePath}/{outPrefix}_aligned_stats.csv', sep = ",", index=False)
     os.remove(f'{samplePath}/idxstats.txt')
     
     return(0)
@@ -1205,7 +1227,7 @@ def parse_config_from_cmdline(config):
 
     parser.add_argument("-progress_bar", help="If True, displays progress bar when aligning unique fragment sequences", default=True, type=str_to_bool)
 
-    parser.add_argument("-save_tmp", help="If True, do not remove temporary path after analysis", default=False, type=str_to_bool)
+    parser.add_argument("-save_merged", help="If True, do not remove merged fastq.gz file after analysis", default=False, type=str_to_bool)
 
     # BBMap alignment BAM
     parser.add_argument("-generate_bam", help="If True, uses BBmap to generate a sorted, cleaned BAM file", default=False, type=str_to_bool)
@@ -1257,7 +1279,7 @@ def parse_config_from_cmdline(config):
         # config["INFER_SENSE_FROM_ALIGNMENT"] = cmd_args.infer_sense_from_alignment
     config["PLOT"] = cmd_args.plot_coverage
     config["PROGRESSBAR"] = cmd_args.progress_bar
-    config["SAVE_TMP"] = cmd_args.save_tmp
+    config["SAVE_MERGED"] = cmd_args.save_merged
 
     config["GEN_BAM"] = cmd_args.generate_bam
     config["BAM_UNALIGNED"] = cmd_args.bam_align_strictness
@@ -1473,11 +1495,12 @@ def main(config):
     save_stats(f'Aligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
-    if not config["SAVE_TMP"]:
-        shutil.rmtree(config["TMP_DIR"])
-
     if config["GEN_BAM"]:
-        generate_bam(config)
+        generate_bam(config, "PairedEnd", config["R1"], config["R2"])
+        generate_bam(config, "Merged", cleaned_fastq)
+
+    if not config["SAVE_MERGED"] and os.path.isfile(cleaned_fastq):
+        os.remove(cleaned_fastq)
 
     ### END MERGEITD PIPELINE
 
