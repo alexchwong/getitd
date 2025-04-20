@@ -835,6 +835,8 @@ def generate_bam(config):
     assert os.path.isdir(bbmap_path)
     assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
 
+    start_time = timeit.default_timer()
+    
     # Get sequences names and lengths from ampliconome
     ampliconome = config["OME_FILE"]
     amp_names, amp_lens = [], []
@@ -853,6 +855,9 @@ def generate_bam(config):
             else:
                 line.replace(" ", "") # remove spaces
                 length += len(line)
+    # final seq
+    amp_names.append(header)
+    amp_lens.append(length)    
     
     ret = subprocess.run([
         f'{bbmap_path}/bbmap.sh', 
@@ -863,7 +868,11 @@ def generate_bam(config):
         f'minaveragequality={config["BBMAP_BQS"]}',
         "nodisk"
     ], capture_output=True, text=True)
+
+    tt = round(timeit.default_timer() - start_time, 2)
+    save_stats(f'BBMap initial alignment completed - {tt} sec', config["STATS_FILE"])
     
+    start_time2 = timeit.default_timer()
     # filter reads by fragment length > amplicon length minus max unaligned
     maxUnaligned = config["BAM_UNALIGNED"]
     with open(tmpSam, 'w') as tmp:
@@ -892,6 +901,9 @@ def generate_bam(config):
 
     os.remove(cleanedBam)
     ret = subprocess.run(["samtools", "index", sortedCleanedBam])
+
+    tt = round(timeit.default_timer() - start_time2, 2)
+    save_stats(f'Alignment fidelity filter complete - {tt} sec', config["STATS_FILE"])
     
     with open(f'{samplePath}/idxstats.txt', 'w') as log:
         p = subprocess.Popen(["samtools", "idxstats", sortedCleanedBam], stdout=log)
@@ -899,15 +911,15 @@ def generate_bam(config):
     
     # clean final idxstats
     idx = pd.read_csv(f'{samplePath}/idxstats.txt', sep = '\t', header = None)
-    amplicon_names= idx.loc[:-1, 0].tolist()
-    amplicon_lens = idx.loc[:-1, 1].tolist()    
-    amplicon_aligns = idx.loc[:-1, 2].tolist()    
+    amplicon_names= idx.iloc[:-1, 0].tolist()
+    amplicon_lens = idx.iloc[:-1, 1].tolist()    
+    amplicon_aligns = idx.iloc[:-1, 2].tolist()    
     sum_aligned = sum([int(i) for i in amplicon_aligns])
     vafs = [i * 100 / sum_aligned for i in amplicon_aligns]
     
     res_s = pd.read_csv(config["MUTATION_FILE_FILTERED"])
     mut_names = res_s["name"].tolist()
-    mut_names.insert(0, "Wild-Type")
+    mut_names.insert(0, "WildType")
     
     dict = {'Amplicon': mut_names, 'Alias': amplicon_names,
         'Length': amplicon_lens, 'Reads Aligned': amplicon_aligns,
