@@ -826,8 +826,7 @@ def findSNP(seq, ref, delins_hgvs, config):
 def generate_bam(config):
     sampleName = config["SAMPLE"]
     samplePath = config["OUT_DIR"]
-    initBam = f"{samplePath}/{sampleName}.bam"
-    sortedInitBam = f"{samplePath}/{sampleName}_sorted.bam"
+    initSam = f"{samplePath}/{sampleName}.sam"
     cleanedBam = f"{samplePath}/{sampleName}_cleaned.bam"
     sortedCleanedBam = f"{samplePath}/{sampleName}_cleaned_sorted.bam"
     tmpSam = f"{samplePath}/tmp.sam"
@@ -835,56 +834,64 @@ def generate_bam(config):
     
     assert os.path.isdir(bbmap_path)
     assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
+
+    # Get sequences names and lengths from ampliconome
+    ampliconome = config["OME_FILE"]
+    amp_names, amp_lens = [], []
+    header, length = None, 0
+    with open(ampliconome) as fasta:
+        for line in fasta:
+            # Trim newline
+            line = line.rstrip() # remove return carriage and any trailing spaces
+            if line.startswith('>'):
+                # If we captured one before, print it now
+                if header is not None:
+                    amp_names.append(header)
+                    amp_lens.append(length)
+                    length = 0
+                header = line[1:]
+            else:
+                line.replace(" ", "") # remove spaces
+                length += len(line)
     
     ret = subprocess.run([
         f'{bbmap_path}/bbmap.sh', 
         f'in={config["R1"]}', f'in2={config["R2"]}',
         f'ref={samplePath}/{sampleName}_ampliconome.fa',
-        f'out={initBam}',
+        f'out={initSam}',
         "maxindel=2", "strictmaxindel=t",
         f'minaveragequality={config["BBMAP_BQS"]}',
-        "nodisk", "bs=bs.sh"
+        "nodisk"
     ], capture_output=True, text=True)
-    ret2 = subprocess.run(["sh", "bs.sh"])
-    os.remove("bs.sh")
     
     # filter reads by fragment length > amplicon length minus max unaligned
     maxUnaligned = config["BAM_UNALIGNED"]
-    with open(f'{samplePath}/idxstats.txt', 'w') as log:
-        p = subprocess.Popen(["samtools", "idxstats", sortedInitBam], stdout=log)
-        p_status = p.wait()
-
-    idx = pd.read_csv(f'{samplePath}/idxstats.txt', sep = '\t', header = None)
-    amplicon_names= idx.loc[:, 0].tolist()
-    amplicon_lens = idx.loc[:, 1].tolist()    
-    
     with open(tmpSam, 'w') as tmp:
-        p = subprocess.Popen(["samtools", "view", "-H", sortedInitBam], stdout=tmp)
-        p_status = p.wait()
-
-    printAll = "{print $0}"
-    for i in range(len(amplicon_names) - 1):
-        fLen = amplicon_lens[i] - maxUnaligned
         with open(tmpSam, 'a') as tmp:
-            ps = subprocess.Popen(["samtools", "view", sortedInitBam, amplicon_names[i]], stdout=subprocess.PIPE)
-            ps2 = subprocess.Popen(["awk", "-F\t", f"(($9 >= {fLen}) || ($9 <= -{fLen})) {printAll}"], stdin = ps.stdout, stdout = tmp)
+            ps2 = subprocess.Popen(["awk", 'substr($0,1,1)=="@"', initSam], stdout = tmp)
+            p_status = ps2.wait()
+            
+    printAll = "{print $0}"
+    for i in range(len(amp_names)):
+        fLen = amp_lens[i] - maxUnaligned
+        with open(tmpSam, 'a') as tmp:
+            ps2 = subprocess.Popen(
+                ["awk", "-F\t", f'($3 == "{amp_names[i]}" && (($9 >= {fLen}) || ($9 <= -{fLen-1}))) {printAll}', initSam], 
+                stdout = tmp)
             p_status = ps2.wait()
 
+    os.remove(initBam)
     with open(cleanedBam, 'w') as bam:
         pb = subprocess.Popen(["samtools", "view", "-b", tmpSam], stdout = bam)
         p_status = pb.wait()
 
+    os.remove(tmpSam)    
     with open(sortedCleanedBam, 'w') as bam:
         pb = subprocess.Popen(["samtools", "sort", cleanedBam], stdout = bam)
         p_status = pb.wait()
 
-    ret = subprocess.run(["samtools", "index", sortedCleanedBam])
-
-    os.remove(initBam)
-    os.remove(sortedInitBam)
-    os.remove(f"{sortedInitBam}.bai")
     os.remove(cleanedBam)
-    os.remove(tmpSam)    
+    ret = subprocess.run(["samtools", "index", sortedCleanedBam])
     
     with open(f'{samplePath}/idxstats.txt', 'w') as log:
         p = subprocess.Popen(["samtools", "idxstats", sortedCleanedBam], stdout=log)
@@ -899,7 +906,7 @@ def generate_bam(config):
     vafs = [i * 100 / sum_aligned for i in amplicon_aligns]
     
     res_s = pd.read_csv(config["MUTATION_FILE_FILTERED"])
-    mut_names = res_s["name"]
+    mut_names = res_s["name"].tolist()
     mut_names.insert(0, "Wild-Type")
     
     dict = {'Amplicon': mut_names, 'Alias': amplicon_names,
