@@ -864,7 +864,7 @@ def generate_bam(config, mode = "PairedEnd"):
     assert os.path.isfile(os.path.join(bbmap_path, "bbmap.sh"))
 
     start_time = timeit.default_timer()
-    save_stats(f'\nUsing BBMap to align {outPrefix}', config["STATS_FILE"])
+    save_stats(f'\nUsing BBMap to align {outPrefix} reads', config["STATS_FILE"])
     
     # Get sequences names and lengths from ampliconome
     amp_names, amp_lens = get_amplicons(config)
@@ -906,7 +906,7 @@ def generate_bam(config, mode = "PairedEnd"):
     for i in range(len(amp_names)):
         fLen = amp_lens[i] - alignDiff
         fLen2 = amp_lens[i] + alignDiff
-        mapqT = config("ALIGN_MAPQ")
+        mapqT = config["ALIGN_MAPQ"]
         with open(tmpSam, 'a') as tmp:
             if mode == "PairedEnd":
                 ps2 = subprocess.Popen(
@@ -1507,7 +1507,7 @@ def main(config):
     for i in range(len(prealigns)):
         prealigns.loc[i, "SeqLength"] = len(prealigns.iloc[i]["Sequence"])
 
-    save_stats(f'Aligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
+    save_stats(f'\nAligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
     # export cleaned fastq to main folder if required
