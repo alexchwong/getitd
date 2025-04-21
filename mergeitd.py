@@ -877,7 +877,7 @@ def generate_bam(config, mode = "PairedEnd"):
             f'minaveragequality={config["BBMAP_BQS"]}',
             "nodisk"
         ], capture_output=True, text=True)
-    else if mode == "Merged":
+    elif mode == "Merged":
         ret = subprocess.run([
             f'{bbmap_path}/bbmap.sh', 
             f'in={config["MERGED_READS"]}',
@@ -910,7 +910,7 @@ def generate_bam(config, mode = "PairedEnd"):
                     ["awk", "-F\t", f'($3 == "{amp_names[i]}") && ($5 >= {mapqT}) && (($9 >= {fLen}) || ($9 <= -{fLen-1})) {printAll}', initSam], 
                     stdout = tmp)
                 p_status = ps2.wait()
-            else if mode == "Merged":
+            elif mode == "Merged":
                 ps2 = subprocess.Popen(
                     ["awk", "-F\t", f'($3 == "{amp_names[i]}") && ($5 >= 30) && (length($10) >= {fLen1}) && (length($10) <= {fLen2}) {printAll}', initSam], 
                     stdout = tmp)
@@ -1512,7 +1512,7 @@ def main(config):
         ret = subprocess.run(["gzip", cleaned_fastq])
         shutil.move(f'{cleaned_fastq}.gz', tmpFile)
         config["MERGED_READS"] = tmpFile
-    else if config["BAM_FROM_MERGED"]:
+    elif config["BAM_FROM_MERGED"]:
         tmpFile = os.path.join(config["OUT_DIR"], "cleaned.fastq")
         shutil.move(cleaned_fastq, tmpFile)
         config["MERGED_READS"] = tmpFile         
