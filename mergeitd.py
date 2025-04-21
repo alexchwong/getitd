@@ -855,9 +855,9 @@ def generate_bam(config, mode = "PairedEnd"):
     sampleName = config["SAMPLE"]
     samplePath = config["OUT_DIR"]
     initSam = os.path.join(samplePath, f"{outPrefix}.sam")
-    cleanedBam = os.path.join(samplePath, f"{outPrefix}_cleaned.sam")
-    sortedCleanedBam = os.path.join(samplePath, f"{outPrefix}_cleaned_sorted.sam")
     tmpSam = os.path.join(samplePath, "tmp.sam")
+    cleanedBam = os.path.join(samplePath, f"{outPrefix}_cleaned.bam")
+    sortedCleanedBam = os.path.join(samplePath, f"{outPrefix}_cleaned_sorted.bam")
     bbmap_path = config["BBMAP_PATH"]
 
     assert os.path.isdir(bbmap_path)
@@ -915,7 +915,7 @@ def generate_bam(config, mode = "PairedEnd"):
                 p_status = ps2.wait()
             elif mode == "Merged":
                 ps2 = subprocess.Popen(
-                    ["awk", "-F\t", f'($3 == "{amp_names[i]}") && ($5 >= 30) && (length($10) >= {fLen1}) && (length($10) <= {fLen2}) {printAll}', initSam], 
+                    ["awk", "-F\t", f'($3 == "{amp_names[i]}") && ($5 >= 30) && (length($10) >= {fLen}) && (length($10) <= {fLen2}) {printAll}', initSam], 
                     stdout = tmp)
                 p_status = ps2.wait()
 
