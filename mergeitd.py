@@ -156,23 +156,23 @@ def bbmap_process(config):
     if config["BBMAP_TRIMQ"] > -1:
         start_time2 = timeit.default_timer()
         ret = subprocess.run([
-            f'{bbmap_path}/bbduk.sh', 
-            f'in={temp_path}/unmerged.fastq',
-            f'out={temp_path}/qtrimmed.fastq', 
+            f'{os.path.join(bbmap_path, "bbduk.sh")}', 
+            f'in={os.path.join(temp_path, "unmerged.fastq")}', 
+            f'out={os.path.join(temp_path, "qtrimmed.fastq")}',
             "qtrim=r", f'trimq={config["BBMAP_TRIMQ"]}'
         ], capture_output=True, text=True)
         bbmap_log += ret.stderr + '\n'
         
         ret = subprocess.run([
-            f'{bbmap_path}/bbmerge.sh', 
-            f'in={temp_path}/qtrimmed.fastq',
-            f'out={temp_path}/merged2.fastq',
-            f'ihist={config["OUT_DIR"]}/hist2.tsv'
+            f'{os.path.join(bbmap_path, "bbmerge.sh")}', 
+            f'in={os.path.join(temp_path, "qtrimmed.fastq")}', 
+            f'out={os.path.join(temp_path, "merged2.fastq")}',
+            f'ihist={os.path.join(config["OUT_DIR"], "hist2.tsv")}'
         ], capture_output=True, text=True)
         
         # Concatenate into first file
-        f1 = open(f'{temp_path}/merged.fastq', 'a+')
-        f2 = open(f'{temp_path}/merged2.fastq', 'r')
+        f1 = open(os.path.join(temp_path, "merged.fastq"), 'a+')
+        f2 = open(os.path.join(temp_path, "merged2.fastq"), 'r')
         f1.write(f2.read())
         f1.close()
         f2.close()
@@ -200,9 +200,9 @@ def bbmap_process(config):
     if config["BBMAP_BQS"] > -1:
         start_time3 = timeit.default_timer()
         ret = subprocess.run([
-            f'{bbmap_path}/bbduk.sh', 
-            f'in={temp_path}/merged.fastq',
-            f'out={temp_path}/cleaned.fastq', 
+            f'{os.path.join(bbmap_path, "bbduk.sh")}', 
+            f'in={os.path.join(temp_path, "merged.fastq")}', 
+            f'out={os.path.join(temp_path, "cleaned.fastq")}',
             f'maq={config["BBMAP_BQS"]}'
         ], capture_output=True, text=True)
 
@@ -231,7 +231,10 @@ def bbmap_process(config):
             
         bbmap_log += blog + '\n'
     else:
-        os.rename(f'{temp_path}/merged.fastq', f'{temp_path}/cleaned.fastq')
+        os.rename(
+            os.path.join(temp_path, "merged.fastq"), 
+            os.path.join(temp_path, "cleaned.fastq")
+        )
         if numMerged2 > 0:
             numMerged3 = numMerged + numMerged2
             pcTotal = round(numMerged3 * 100 / numPairs, 2)
@@ -243,8 +246,8 @@ def bbmap_process(config):
     with open(config["BBLOG"], 'w') as f:
         f.write(bbmap_log)
 
-    assert os.path.isfile(f'{temp_path}/cleaned.fastq')
-    return f'{temp_path}/cleaned.fastq'
+    assert os.path.isfile(os.path.join(temp_path, "cleaned.fastq"))
+    return os.path.join(temp_path, "cleaned.fastq")
 
 def is_gz_file(filename):
     """
@@ -844,32 +847,32 @@ def get_amplicons(config):
     # final seq
     amp_names.append(header)
     amp_lens.append(length)        
-    return header, length
+    return amp_names, amp_lens
 
 def generate_bam(config, mode = "PairedEnd"):
     outPrefix = mode
     
     sampleName = config["SAMPLE"]
     samplePath = config["OUT_DIR"]
-    initSam = f"{samplePath}/{outPrefix}.sam"
-    cleanedBam = f"{samplePath}/{outPrefix}_cleaned.bam"
-    sortedCleanedBam = f"{samplePath}/{outPrefix}_cleaned_sorted.bam"
-    tmpSam = f"{samplePath}/tmp.sam"
+    initSam = os.path.join(samplePath, f"{outPrefix}.sam")
+    cleanedBam = os.path.join(samplePath, f"{outPrefix}_cleaned.sam")
+    sortedCleanedBam = os.path.join(samplePath, f"{outPrefix}_cleaned_sorted.sam")
+    tmpSam = os.path.join(samplePath, "tmp.sam")
     bbmap_path = config["BBMAP_PATH"]
 
     assert os.path.isdir(bbmap_path)
-    assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
+    assert os.path.isfile(os.path.join(bbmap_path, "bbmap.sh"))
 
     start_time = timeit.default_timer()
     save_stats(f'\nUsing BBMap to align {outPrefix}', config["STATS_FILE"])
     
     # Get sequences names and lengths from ampliconome
-    header, length = get_amplicons(config)
-    assert len(header) > 1
+    amp_names, amp_lens = get_amplicons(config)
+    assert len(amp_names) > 1
     
     if mode == "PairedEnd":
         ret = subprocess.run([
-            f'{bbmap_path}/bbmap.sh', 
+            os.path.join(bbmap_path, "bbmap.sh"), 
             f'in={config["R1"]}', f'in2={config["R2"]}',
             f'ref={config["OME_FILE"]}',
             f'out={initSam}',
@@ -879,7 +882,7 @@ def generate_bam(config, mode = "PairedEnd"):
         ], capture_output=True, text=True)
     elif mode == "Merged":
         ret = subprocess.run([
-            f'{bbmap_path}/bbmap.sh', 
+            os.path.join(bbmap_path, "bbmap.sh"), 
             f'in={config["MERGED_READS"]}',
             f'ref={config["OME_FILE"]}',
             f'out={initSam}',
@@ -953,7 +956,8 @@ def generate_bam(config, mode = "PairedEnd"):
         'Length': amplicon_lens, 'Reads Aligned': amplicon_aligns,
         'VAF%': vafs}
     res = pd.DataFrame(dict)
-    res.to_csv(f'{samplePath}/{outPrefix}_aligned_stats.csv', sep = ",", index=False)
+    res.to_csv(os.path.join(samplePath, f'{outPrefix}_aligned_stats.csv'),
+        sep = ",", index=False)
     os.remove(idxStatsFile)
     return(0)
     
@@ -1519,8 +1523,8 @@ def main(config):
     if not config["KEEP_TEMP"]:
         shutil.rmtree(config["TMP_DIR"])
     
-    header, length = get_amplicons(config)
-    if len(header) > 1:
+    amp_names, amp_lens = get_amplicons(config)
+    if len(amp_names) > 1:
         if config["BAM_FROM_READS"]:
             generate_bam(config, "PairedEnd")
         if config["BAM_FROM_MERGED"]:
