@@ -1533,7 +1533,7 @@ def main(config):
         save_stats(f'No inserts or ITDs detected, skipping BAM alignment steps', config["STATS_FILE"])    
 
     if not config["KEEP_MERGED"] and os.path.isfile(cleaned_fastq):
-        os.remove(cleaned_fastq)
+        os.remove(config["MERGED_READS"])
 
     ### END MERGEITD PIPELINE
 
