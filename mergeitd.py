@@ -236,13 +236,6 @@ def bbmap_process(config):
             numMerged3 = numMerged + numMerged2
             pcTotal = round(numMerged3 * 100 / numPairs, 2)
             save_stats(f'BBmap merging final result: {numMerged3} of {numPairs} merged reads ({pcTotal} %)', config["STATS_FILE"])
-
-    # write a gzip version of merged fastq file
-    assert os.path.isfile(f'{temp_path}/cleaned.fastq')
-    ret = subprocess.run(["gzip", f'{temp_path}/cleaned.fastq'])
-    out_gzip_file = os.path.join(config["OUT_DIR"], "cleaned.fastq.gz")
-    shutil.move(f'{temp_path}/cleaned.fastq.gz', out_gzip_file)    
-    shutil.rmtree(config["TMP_DIR"])
     
     save_stats(f'BBmap total time taken - {round(timeit.default_timer() - start_time, 2)} sec',
         config["STATS_FILE"])
@@ -250,6 +243,7 @@ def bbmap_process(config):
     with open(config["BBLOG"], 'w') as f:
         f.write(bbmap_log)
 
+    assert os.path.isfile(f'{temp_path}/cleaned.fastq')
     return out_gzip_file
 
 def is_gz_file(filename):
@@ -829,23 +823,7 @@ def findSNP(seq, ref, delins_hgvs, config):
 
     return realCoords, realRefs, realSubs
 
-def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
-    sampleName = config["SAMPLE"]
-    samplePath = config["OUT_DIR"]
-    initSam = f"{samplePath}/{outPrefix}.sam"
-    cleanedBam = f"{samplePath}/{outPrefix}_cleaned.bam"
-    sortedCleanedBam = f"{samplePath}/{outPrefix}_cleaned_sorted.bam"
-    tmpSam = f"{samplePath}/tmp.sam"
-    bbmap_path = config["BBMAP_PATH"]
-    
-    assert os.path.isdir(bbmap_path)
-    assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
-    assert in1 is not None
-
-    start_time = timeit.default_timer()
-    save_stats(f'\nUsing BBMap to align {outPrefix}', config["STATS_FILE"])
-    
-    # Get sequences names and lengths from ampliconome
+def get_amplicons(config):
     ampliconome = config["OME_FILE"]
     amp_names, amp_lens = [], []
     header, length = None, 0
@@ -865,24 +843,45 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
                 length += len(line)
     # final seq
     amp_names.append(header)
-    amp_lens.append(length)    
+    amp_lens.append(length)        
+    return header, length
+
+def generate_bam(config, mode = "PairedEnd"):
+    outPrefix = mode
     
-    if in2 is None:
+    sampleName = config["SAMPLE"]
+    samplePath = config["OUT_DIR"]
+    initSam = f"{samplePath}/{outPrefix}.sam"
+    cleanedBam = f"{samplePath}/{outPrefix}_cleaned.bam"
+    sortedCleanedBam = f"{samplePath}/{outPrefix}_cleaned_sorted.bam"
+    tmpSam = f"{samplePath}/tmp.sam"
+    bbmap_path = config["BBMAP_PATH"]
+
+    assert os.path.isdir(bbmap_path)
+    assert os.path.isfile(f'{bbmap_path}/bbmap.sh')
+
+    start_time = timeit.default_timer()
+    save_stats(f'\nUsing BBMap to align {outPrefix}', config["STATS_FILE"])
+    
+    # Get sequences names and lengths from ampliconome
+    header, length = get_amplicons(config)
+    assert len(header) > 1
+    
+    if mode == "PairedEnd":
         ret = subprocess.run([
             f'{bbmap_path}/bbmap.sh', 
-            f'in={in1}', # f'in2={in2}',
-            f'ref={samplePath}/{sampleName}_ampliconome.fa',
+            f'in={config["R1"]}', f'in2={config["R2"]}',
+            f'ref={config["OME_FILE"]}',
             f'out={initSam}',
             "maxindel=2", "strictmaxindel=t",
             f'minaveragequality={config["BBMAP_BQS"]}',
             "nodisk"
         ], capture_output=True, text=True)
-    
-    else:    
+    else if mode == "Merged":
         ret = subprocess.run([
             f'{bbmap_path}/bbmap.sh', 
-            f'in={in1}', f'in2={in2}',
-            f'ref={samplePath}/{sampleName}_ampliconome.fa',
+            f'in={config["MERGED_READS"]}',
+            f'ref={config["OME_FILE"]}',
             f'out={initSam}',
             "maxindel=2", "strictmaxindel=t",
             f'minaveragequality={config["BBMAP_BQS"]}',
@@ -894,7 +893,7 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
     
     start_time2 = timeit.default_timer()
     # filter reads by fragment length > amplicon length minus max unaligned
-    maxUnaligned = config["BAM_UNALIGNED"]
+    alignDiff = config["ALIGN_LEN_DIFF"]
     with open(tmpSam, 'w') as tmp:
         with open(tmpSam, 'a') as tmp:
             ps2 = subprocess.Popen(["awk", 'substr($0,1,1)=="@"', initSam], stdout = tmp)
@@ -902,12 +901,20 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
             
     printAll = "{print $0}"
     for i in range(len(amp_names)):
-        fLen = amp_lens[i] - maxUnaligned
+        fLen = amp_lens[i] - alignDiff
+        fLen2 = amp_lens[i] + alignDiff
+        mapqT = config("ALIGN_MAPQ")
         with open(tmpSam, 'a') as tmp:
-            ps2 = subprocess.Popen(
-                ["awk", "-F\t", f'($3 == "{amp_names[i]}" && (($9 >= {fLen}) || ($9 <= -{fLen-1}))) {printAll}', initSam], 
-                stdout = tmp)
-            p_status = ps2.wait()
+            if mode == "PairedEnd":
+                ps2 = subprocess.Popen(
+                    ["awk", "-F\t", f'($3 == "{amp_names[i]}") && ($5 >= {mapqT}) && (($9 >= {fLen}) || ($9 <= -{fLen-1})) {printAll}', initSam], 
+                    stdout = tmp)
+                p_status = ps2.wait()
+            else if mode == "Merged":
+                ps2 = subprocess.Popen(
+                    ["awk", "-F\t", f'($3 == "{amp_names[i]}") && ($5 >= 30) && (length($10) >= {fLen1}) && (length($10) <= {fLen2}) {printAll}', initSam], 
+                    stdout = tmp)
+                p_status = ps2.wait()
 
     os.remove(initSam)
     with open(cleanedBam, 'w') as bam:
@@ -925,12 +932,13 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
     tt = round(timeit.default_timer() - start_time2, 2)
     save_stats(f'{outPrefix} Alignment fidelity filter complete - {tt} sec', config["STATS_FILE"])
     
-    with open(f'{samplePath}/idxstats.txt', 'w') as log:
+    idxStatsFile = os.path.join(config["OUT_DIR"], f'{outPrefix}_idxstats.txt')
+    with open(idxStatsFile, 'w') as log:
         p = subprocess.Popen(["samtools", "idxstats", sortedCleanedBam], stdout=log)
         p_status = p.wait()
     
     # clean final idxstats
-    idx = pd.read_csv(f'{samplePath}/idxstats.txt', sep = '\t', header = None)
+    idx = pd.read_csv(idxStatsFile, sep = '\t', header = None)
     amplicon_names= idx.iloc[:-1, 0].tolist()
     amplicon_lens = idx.iloc[:-1, 1].tolist()    
     amplicon_aligns = idx.iloc[:-1, 2].tolist()    
@@ -946,8 +954,7 @@ def generate_bam(config, outPrefix = "PairedEnd", in1 = None, in2 = None):
         'VAF%': vafs}
     res = pd.DataFrame(dict)
     res.to_csv(f'{samplePath}/{outPrefix}_aligned_stats.csv', sep = ",", index=False)
-    os.remove(f'{samplePath}/idxstats.txt')
-    
+    os.remove(idxStatsFile)
     return(0)
     
 
@@ -1225,12 +1232,14 @@ def parse_config_from_cmdline(config):
 
     parser.add_argument("-progress_bar", help="If True, displays progress bar when aligning unique fragment sequences", default=True, type=str_to_bool)
 
-    parser.add_argument("-save_merged", help="If True, do not remove merged fastq.gz file after analysis", default=False, type=str_to_bool)
-
     # BBMap alignment BAM
-    parser.add_argument("-generate_bam", help="If True, uses BBmap to generate a sorted, cleaned BAM file", default=False, type=str_to_bool)
+    parser.add_argument("-bam_from_reads", help="If True, uses BBmap to generate a sorted, cleaned BAM file from paired-end reads", default=False, type=str_to_bool)
+    parser.add_argument("-bam_from_merged", help="If True, uses BBmap to generate a sorted, cleaned BAM file from merged reads", default=False, type=str_to_bool)
+    parser.add_argument("-keep_merged_reads", help="If True, preserve a gzipped copy of merged reads after analysis", default=False, type=str_to_bool)
+    parser.add_argument("-keep_temp_files", help="If True, preserve the temporary folder storing fastq intermediates", default=False, type=str_to_bool)
     
-    parser.add_argument('-bam_align_strictness', help="max number of bases of reference amplicon unaligned, lower is more strict (default 20)", default="20", type=int)
+    parser.add_argument('-alignment_length_difference', help="filter out alignments with length difference from reference amplicon above this value, lower is more strict (default 20)", default="20", type=int)
+    parser.add_argument('-alignment_mapq_filter', help="max number of bases of reference amplicon unaligned, lower is more strict (default 30)", default="30", type=int)
     
     # Not used
     parser.add_argument('-nkern', help="number of cores to use for parallel tasks (default 12)", default="12", type=int)
@@ -1277,10 +1286,14 @@ def parse_config_from_cmdline(config):
         # config["INFER_SENSE_FROM_ALIGNMENT"] = cmd_args.infer_sense_from_alignment
     config["PLOT"] = cmd_args.plot_coverage
     config["PROGRESSBAR"] = cmd_args.progress_bar
-    config["SAVE_MERGED"] = cmd_args.save_merged
 
-    config["GEN_BAM"] = cmd_args.generate_bam
-    config["BAM_UNALIGNED"] = cmd_args.bam_align_strictness
+    config["BAM_FROM_READS"] = cmd_args.bam_from_reads
+    config["BAM_FROM_MERGED"] = cmd_args.bam_from_merged
+    config["KEEP_MERGED"] = cmd_args.keep_merged_reads
+    config["KEEP_TEMP"] = cmd_args.keep_temp_files
+
+    config["ALIGN_LEN_DIFF"] = cmd_args.alignment_length_difference
+    config["ALIGN_MAPQ"] = cmd_args.alignment_mapq_filter
 
     # R2 reads are reverse-complemented prior to alignment to the WT reference sequence
     # --> reverse-complement any sequence later to be found within reverse-complemented R2 reads
@@ -1493,11 +1506,29 @@ def main(config):
     save_stats(f'Aligning - {len(prealigns)} unique fragment sequences - {filteredReads} of {totalReads} total fragments ({pcReads} %)', config["STATS_FILE"])        
     alignITD(prealigns, config)
 
-    if config["GEN_BAM"]:
-        generate_bam(config, "PairedEnd", config["R1"], config["R2"])
-        # generate_bam(config, "Merged", cleaned_fastq)
+    # export cleaned fastq to main folder if required
+    if config["KEEP_MERGED"]:            
+        tmpFile = os.path.join(config["OUT_DIR"], "cleaned.fastq.gz")
+        ret = subprocess.run(["gzip", cleaned_fastq])
+        shutil.move(f'{cleaned_fastq}.gz', tmpFile)
+        config["MERGED_READS"] = tmpFile
+    else if config["BAM_FROM_MERGED"]:
+        tmpFile = os.path.join(config["OUT_DIR"], "cleaned.fastq")
+        shutil.move(cleaned_fastq, tmpFile)
+        config["MERGED_READS"] = tmpFile         
+    if not config["KEEP_TEMP"]:
+        shutil.rmtree(config["TMP_DIR"])
+    
+    header, length = get_amplicons(config)
+    if len(header) > 1:
+        if config["BAM_FROM_READS"]:
+            generate_bam(config, "PairedEnd")
+        if config["BAM_FROM_MERGED"]:
+            generate_bam(config, "Merged")
+    elif config["BAM_FROM_READS"] or config["BAM_FROM_MERGED"]:
+        save_stats(f'No inserts or ITDs detected, skipping BAM alignment steps', config["STATS_FILE"])    
 
-    if not config["SAVE_MERGED"] and os.path.isfile(cleaned_fastq):
+    if not config["KEEP_MERGED"] and os.path.isfile(cleaned_fastq):
         os.remove(cleaned_fastq)
 
     ### END MERGEITD PIPELINE
