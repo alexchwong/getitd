@@ -111,8 +111,8 @@ def bbmap_process(config):
     bbmap_path, temp_path = config["BBMAP_PATH"], config["TMP_DIR"]
 
     assert os.path.isdir(bbmap_path)
-    assert os.path.isfile(f'{bbmap_path}/bbmerge.sh')
-    assert os.path.isfile(f'{bbmap_path}/bbduk.sh')
+    assert os.path.isfile(os.path.join(bbmap_path, 'bbmerge.sh'))
+    assert os.path.isfile(os.path.join(bbmap_path,'bbduk.sh'))
     
     start_time = timeit.default_timer()
     
@@ -123,11 +123,11 @@ def bbmap_process(config):
     
     # Phase 1 merging
     ret = subprocess.run([
-        f'{bbmap_path}/bbmerge.sh', 
+        os.path.join(bbmap_path, 'bbmerge.sh'), 
         f'in1={fastq1}', f'in2={fastq2}',
-        f'out={temp_path}/merged.fastq', 
-        f'outu={temp_path}/unmerged.fastq',
-        f'ihist={config["OUT_DIR"]}/hist.tsv'
+        f'out={os.path.join(temp_path, "merged.fastq")}', 
+        f'outu={os.path.join(temp_path, "unmerged.fastq")}',
+        f'ihist={os.path.join(config["OUT_DIR"], "hist.tsv")}'
     ], capture_output=True, text=True)    
     
     blog = ret.stderr
@@ -244,7 +244,7 @@ def bbmap_process(config):
         f.write(bbmap_log)
 
     assert os.path.isfile(f'{temp_path}/cleaned.fastq')
-    return out_gzip_file
+    return f'{temp_path}/cleaned.fastq'
 
 def is_gz_file(filename):
     """
